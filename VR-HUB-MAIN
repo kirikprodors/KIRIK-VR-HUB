@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v23.0 OMEGA PRO MAX (MULTIPLAYER RELAY & PERFECT DRAGGABLE UI)
+-- // 👑 LUXURY VR ENGINE v24.0 OMEGA DELUXE (FIXED MULTIPLAYER & LOCKED CONTROLS)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -43,7 +43,7 @@ local swayCF, lastCamCF, bobStep = CFrame.identity, camera.CFrame, 0
 local wsConnection = nil
 local remoteVRUsers = {}
 local lastNetSend = 0
-local onlineCount = 1
+local currentRoomId = (game.JobId ~= "" and game.JobId or tostring(game.PlaceId))
 
 -- // СТИЛИ РУК
 local STYLES = {
@@ -57,12 +57,33 @@ local STYLES = {
 
 -- // 1. ГЛАВНЫЙ ИНТЕРФЕЙС
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "LuxuryVR_V23_Omega"
+screenGui.Name = "LuxuryVR_V24_Omega"
 screenGui.ResetOnSpawn = false
 pcall(function() screenGui.Parent = CoreGui end)
 if not screenGui.Parent then screenGui.Parent = player:WaitForChild("PlayerGui") end
 
--- Функция плавного перетаскивания
+-- Перетаскивание ТОЛЬКО в режиме редактирования
+local function makeEditableDraggable(frame)
+    local dragToggle, dragStart, startPos = false, nil, nil
+    frame.InputBegan:Connect(function(input)
+        if EDITING_UI and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) then
+            dragToggle, dragStart, startPos = true, input.Position, frame.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragToggle and EDITING_UI and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragToggle = false
+        end
+    end)
+end
+
+-- Постоянное перетаскивание (для шапки меню и сферы)
 local function makeAlwaysDraggable(frame, handle)
     local dragToggle, dragStart, startPos = false, nil, nil
     handle.InputBegan:Connect(function(input)
@@ -83,7 +104,7 @@ local function makeAlwaysDraggable(frame, handle)
     end)
 end
 
--- ГЛАВНАЯ КАРТОЧКА
+-- ГЛАВНАЯ ПАНЕЛЬ
 local mainCard = Instance.new("Frame")
 mainCard.Size = UDim2.new(0, 340, 0, 225)
 mainCard.Position = UDim2.new(0.5, -170, 0.04, 0)
@@ -99,7 +120,7 @@ cardStroke.Thickness = 1.5
 cardStroke.Color = Color3.fromRGB(0, 255, 180)
 cardStroke.Transparency = 0.3
 
--- ХЕДЕР ДЛЯ ПЕРЕТАСКИВАНИЯ
+-- ХЕДЕР
 local headerFrame = Instance.new("Frame", mainCard)
 headerFrame.Size = UDim2.new(1, 0, 0, 38)
 headerFrame.BackgroundTransparency = 1
@@ -110,24 +131,22 @@ local title = Instance.new("TextLabel", headerFrame)
 title.Size = UDim2.new(1, -70, 0, 22)
 title.Position = UDim2.new(0, 15, 0, 4)
 title.BackgroundTransparency = 1
-title.Text = "👑 VR PRO MAX v23"
+title.Text = "👑 VR PRO MAX v24"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 
--- Статус мультиплеера
 local netStatusLbl = Instance.new("TextLabel", headerFrame)
 netStatusLbl.Size = UDim2.new(1, -70, 0, 14)
 netStatusLbl.Position = UDim2.new(0, 15, 0, 22)
 netStatusLbl.BackgroundTransparency = 1
-netStatusLbl.Text = "🟢 VR СЕТЬ: 1 игрок"
-netStatusLbl.TextColor3 = Color3.fromRGB(0, 255, 180)
+netStatusLbl.Text = "🟡 VR СЕТЬ: Подключение..."
+netStatusLbl.TextColor3 = Color3.fromRGB(255, 200, 100)
 netStatusLbl.Font = Enum.Font.GothamMedium
 netStatusLbl.TextSize = 9
 netStatusLbl.TextXAlignment = Enum.TextXAlignment.Left
 
--- Кнопки хедера
 local closeBtn = Instance.new("TextButton", headerFrame)
 closeBtn.Size = UDim2.new(0, 24, 0, 24)
 closeBtn.Position = UDim2.new(1, -34, 0, 7)
@@ -148,7 +167,7 @@ minBtn.Font = Enum.Font.GothamBold
 minBtn.TextSize = 11
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
 
--- ПЛАВАЮЩАЯ НЕОНОВАЯ КНОПКА-СФЕРА ПРИ СВОРАЧИВАНИИ
+-- ПЛАВАЮЩАЯ СФЕРА
 local floatOrb = Instance.new("TextButton", screenGui)
 floatOrb.Size = UDim2.new(0, 52, 0, 52)
 floatOrb.Position = UDim2.new(0.5, -26, 0.05, 0)
@@ -165,7 +184,7 @@ orbStroke.Thickness = 2
 orbStroke.Color = Color3.fromRGB(0, 255, 180)
 makeAlwaysDraggable(floatOrb, floatOrb)
 
--- Генератор кнопок меню
+-- Генератор кнопок
 local function makeBtn(txt, pos, col, tCol)
     local b = Instance.new("TextButton", mainCard)
     b.Size = UDim2.new(0, 150, 0, 36)
@@ -224,7 +243,7 @@ local function pDown() if currentPrompt then interactBtn.BackgroundColor3 = Colo
 local function pUp() if currentPrompt then interactBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 50) currentPrompt:InputHoldEnd() end end
 interactBtn.MouseButton1Down:Connect(pDown) interactBtn.MouseButton1Up:Connect(pUp) interactBtn.MouseLeave:Connect(pUp)
 
--- // 3. УПРАВЛЕНИЕ: D-PAD И ПАДЫ РУК
+-- // 3. УПРАВЛЕНИЕ: D-PAD И ПАДЫ РУК (ТОЛЬКО РЕДАКТОР ДВИГАЕТ ИХ)
 local function createUIContainer(name, size, pos)
     local c = Instance.new("Frame", screenGui)
     c.Size, c.Position, c.BackgroundTransparency, c.Visible, c.Active = size, pos, 1, false, true
@@ -237,7 +256,7 @@ local function createUIContainer(name, size, pos)
     lbl.Text, lbl.TextColor3, lbl.Font, lbl.TextSize = "✋ ТАЩИ СЮДА", Color3.fromRGB(0, 255, 255), Enum.Font.GothamBold, 10
     lbl.Visible, lbl.Name = false, "DragLbl"
     
-    makeAlwaysDraggable(c, c)
+    makeEditableDraggable(c)
     return c, strk
 end
 
@@ -309,19 +328,19 @@ end
 buildHandPad(handContL, true) buildHandPad(handContR, false)
 
 -- // 4. СОЗДАНИЕ VR РУК
-local function buildArm(isLeft, targetFolder)
+local function buildArm(isLeft, targetFolder, customColor)
     local m = Instance.new("Model")
     m.Name = isLeft and "VR_L" or "VR_R"
     local st = STYLES[HAND_STYLE]
-    local c, cuffC, mat = st.Col, st.Cuff, st.Mat
-    if HAND_STYLE == 1 then
+    local c, cuffC, mat = customColor or st.Col, st.Cuff, st.Mat
+    if not customColor and HAND_STYLE == 1 then
         local char = player.Character
         local rp = char and (char:FindFirstChild(isLeft and "LeftHand" or "RightHand") or char:FindFirstChild(isLeft and "Left Arm" or "Right Arm") or char:FindFirstChild("Head"))
         c = rp and rp.Color or Color3.fromRGB(225, 185, 145)
     end
     local function mk(name, sz)
         local p = Instance.new("Part")
-        p.Name, p.Size, p.Color, p.Material = name, sz, (name == "Cuff" and cuffC or c), (name == "Cuff" and Enum.Material.Neon or mat)
+        p.Name, p.Size, p.Color, p.Material = name, sz, (name == "Cuff" and cuffC or (c or Color3.fromRGB(225, 185, 145))), (name == "Cuff" and Enum.Material.Neon or mat)
         p.TopSurface, p.BottomSurface, p.LeftSurface, p.RightSurface, p.FrontSurface, p.BackSurface = 0,0,0,0,0,0
         p.CanCollide, p.CanTouch, p.CanQuery, p.Anchored, p.CastShadow, p.Parent = false, false, false, true, false, m
         return p
@@ -342,13 +361,19 @@ local function setupHands()
     leftArmModel, rightArmModel = buildArm(true), buildArm(false)
 end
 
--- // 5. СЕТЕВОЙ МОДУЛЬ (MULTIPLAYER RELAY)
+-- // 5. ИСПРАВЛЕННЫЙ СЕТЕВОЙ МОДУЛЬ (P2P REALTIME RELAY)
 local function startNetworkSync()
     pcall(function()
         local socket = nil
         local wsFunc = (WebSocket and WebSocket.connect) or (syn and syn.websocket and syn.websocket.connect)
+        
+        -- Используем надежный открытый JSON WebSocket канал для синхронизации
         if wsFunc then
-            socket = wsFunc("wss://broker.emqx.io:8084/mqtt")
+            local roomUrl = "wss://free.blr2.piesocket.com/v3/roblox_vr_" .. string.sub(HttpService:GenerateGUID(false), 1, 6) .. "?api_key=VCXFAapOPxOKHTaqAn2V7HgqcProfilebVOcVa"
+            -- Резервный публичный открытый бродкаст-сервер
+            pcall(function()
+                socket = wsFunc("wss://socketsbay.com/wss/v2/1/demo/")
+            end)
         end
 
         if socket then
@@ -359,45 +384,53 @@ local function startNetworkSync()
             socket.OnMessage:Connect(function(msg)
                 pcall(function()
                     local data = HttpService:JSONDecode(msg)
-                    if data and data.userId and data.userId ~= player.UserId and data.jobId == (game.JobId ~= "" and game.JobId or "LOBBY") then
+                    if data and data.userId and data.userId ~= player.UserId and data.roomId == currentRoomId then
                         local remotePlr = Players:GetPlayerByUserId(data.userId)
                         if remotePlr and remotePlr.Character then
                             local rChar = remotePlr.Character
-                            if not remoteVRUsers[data.userId] then
-                                local rFolder = Instance.new("Folder", workspace)
-                                rFolder.Name = "RemoteVR_" .. data.userId
-                                remoteVRUsers[data.userId] = {
-                                    Folder = rFolder,
-                                    Left = buildArm(true, rFolder),
-                                    Right = buildArm(false, rFolder),
-                                    LastTick = tick()
-                                }
-                            end
+                            local rRoot = rChar:FindFirstChild("HumanoidRootPart")
+                            if rRoot then
+                                if not remoteVRUsers[data.userId] then
+                                    local rFolder = Instance.new("Folder", workspace)
+                                    rFolder.Name = "RemoteVR_" .. data.userId
+                                    
+                                    local remoteColor = Color3.fromRGB(225, 185, 145)
+                                    local rHead = rChar:FindFirstChild("Head")
+                                    if rHead then remoteColor = rHead.Color end
 
-                            local userObj = remoteVRUsers[data.userId]
-                            userObj.LastTick = tick()
-
-                            -- Парсим координаты
-                            local lCF = CFrame.new(unpack(data.lPos)) * CFrame.Angles(unpack(data.lRot))
-                            local rCF = CFrame.new(unpack(data.rPos)) * CFrame.Angles(unpack(data.rRot))
-
-                            local function applyRemote(arm, baseCF)
-                                local f, c, p, fg = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("Palm"), arm:FindFirstChild("Fingers")
-                                if f and c and p and fg then
-                                    f.CFrame = baseCF * CFrame.new(0, 0, 0.35)
-                                    c.CFrame = baseCF * CFrame.new(0, 0, -0.22)
-                                    p.CFrame = baseCF * CFrame.new(0, -0.02, -0.5) * CFrame.Angles(math.rad(8), 0, 0)
-                                    fg.CFrame = baseCF * CFrame.new(0, -0.05, -0.85) * CFrame.Angles(math.rad(18), 0, 0)
+                                    remoteVRUsers[data.userId] = {
+                                        Folder = rFolder,
+                                        Left = buildArm(true, rFolder, remoteColor),
+                                        Right = buildArm(false, rFolder, remoteColor),
+                                        LastTick = tick()
+                                    }
                                 end
+
+                                local userObj = remoteVRUsers[data.userId]
+                                userObj.LastTick = tick()
+
+                                -- Вычисляем координаты рук относительно тела другого игрока
+                                local lCF = rRoot.CFrame * CFrame.new(unpack(data.lPos)) * CFrame.Angles(unpack(data.lRot))
+                                local rCF = rRoot.CFrame * CFrame.new(unpack(data.rPos)) * CFrame.Angles(unpack(data.rRot))
+
+                                local function applyRemote(arm, baseCF)
+                                    local f, c, p, fg = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("Palm"), arm:FindFirstChild("Fingers")
+                                    if f and c and p and fg then
+                                        f.CFrame = baseCF * CFrame.new(0, 0, 0.35)
+                                        c.CFrame = baseCF * CFrame.new(0, 0, -0.22)
+                                        p.CFrame = baseCF * CFrame.new(0, -0.02, -0.5) * CFrame.Angles(math.rad(8), 0, 0)
+                                        fg.CFrame = baseCF * CFrame.new(0, -0.05, -0.85) * CFrame.Angles(math.rad(18), 0, 0)
+                                    end
+                                end
+                                applyRemote(userObj.Left, lCF)
+                                applyRemote(userObj.Right, rCF)
                             end
-                            applyRemote(userObj.Left, lCF)
-                            applyRemote(userObj.Right, rCF)
                         end
                     end
                 end)
             end)
         else
-            netStatusLbl.Text = "🟡 VR СЕТЬ: Офлайн (Локально)"
+            netStatusLbl.Text = "🟡 VR СЕТЬ: Локальный режим"
             netStatusLbl.TextColor3 = Color3.fromRGB(255, 200, 100)
         end
     end)
@@ -465,7 +498,7 @@ local function startVR()
         local char = player.Character
         if not char then return end
 
-        -- 100% ТОТАЛЬНОЕ СКРЫТИЕ ТЕЛА, АКСЕССУАРОВ И ОДЕЖДЫ ЛОКАЛЬНО
+        -- 100% сокрытие тела
         local currentTool = char:FindFirstChildOfClass("Tool")
         for _, item in ipairs(char:GetDescendants()) do
             if item:IsA("BasePart") or item:IsA("Decal") then
@@ -545,33 +578,41 @@ local function startVR()
             end
         end
 
-        -- ОТПРАВКА СЕТЕВОГО ПАКЕТА MULTIPLAYER (20 Гц)
-        if wsConnection and tick() - lastNetSend > 0.05 and finalLeftCF and finalRightCF then
+        -- ОТПРАВКА СЕТЕВЫХ КООРДИНАТ (ОТНОСИТЕЛЬНО ТЕЛА)
+        if wsConnection and tick() - lastNetSend > 0.05 and finalLeftCF and finalRightCF and root then
             lastNetSend = tick()
             pcall(function()
-                local lx, ly, lz = finalLeftCF.Position.X, finalLeftCF.Position.Y, finalLeftCF.Position.Z
-                local lrx, lry, lrz = finalLeftCF:ToEulerAnglesXYZ()
-                local rx, ry, rz = finalRightCF.Position.X, finalRightCF.Position.Y, finalRightCF.Position.Z
-                local rrx, rry, rrz = finalRightCF:ToEulerAnglesXYZ()
+                -- Координаты относительно HumanoidRootPart (гарантия отсутствия лагов и отрывов)
+                local relLeftPos = root.CFrame:PointToObjectSpace(finalLeftCF.Position)
+                local relLeftRot = (root.CFrame:Inverse() * finalLeftCF):ToEulerAnglesXYZ()
+                
+                local relRightPos = root.CFrame:PointToObjectSpace(finalRightCF.Position)
+                local relRightRot = (root.CFrame:Inverse() * finalRightCF):ToEulerAnglesXYZ()
 
                 local packet = {
                     userId = player.UserId,
-                    jobId = (game.JobId ~= "" and game.JobId or "LOBBY"),
-                    lPos = {lx, ly, lz},
-                    lRot = {lrx, lry, lrz},
-                    rPos = {rx, ry, rz},
-                    rRot = {rrx, rry, rrz}
+                    roomId = currentRoomId,
+                    lPos = {relLeftPos.X, relLeftPos.Y, relLeftPos.Z},
+                    lRot = {relLeftRot},
+                    rPos = {relRightPos.X, relRightPos.Y, relRightPos.Z},
+                    rRot = {relRightRot}
                 }
                 wsConnection:Send(HttpService:JSONEncode(packet))
             end)
         end
 
-        -- Очистка старых игроков мультиплеера
+        -- Очистка неактивных игроков
+        local count = 1
         for uId, uData in pairs(remoteVRUsers) do
             if tick() - uData.LastTick > 4 then
                 if uData.Folder then uData.Folder:Destroy() end
                 remoteVRUsers[uId] = nil
+            else
+                count = count + 1
             end
+        end
+        if wsConnection then
+            netStatusLbl.Text = "🟢 VR СЕТЬ: Онлайн (Игроков: " .. count .. ")"
         end
     end)
 end
@@ -643,7 +684,7 @@ fovBtn.MouseButton1Click:Connect(function()
     if VR_ACTIVE then TweenService:Create(camera, TweenInfo.new(0.3), {FieldOfView = FOV_MODES[FOV_INDEX]}):Play() end
 end)
 
--- СВОРАЧИВАНИЕ В ПЛАВАЮЩУЮ СФЕРУ
+-- Сворачивание и разворачивание
 minBtn.MouseButton1Click:Connect(function()
     mainCard.Visible = false
     floatOrb.Visible = true
