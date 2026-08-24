@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v37.0 OMEGA (REALISTIC SCALE & FULL SKIN SYNC)
+-- // 👑 LUXURY VR ENGINE v38.0 OMEGA (DYNAMIC WALK LIFT, 10 SKINS, 2-HAND GRIP & PRIVATE WS)
 
 -- ==============================================================================
 -- 🚀 ТВОЙ ЛИЧНЫЙ ПРИВАТНЫЙ WEBSOCKET СЕРВЕР:
@@ -17,7 +17,7 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 -- // 1. ОЧИСТКА ПРЕДЫДУЩИХ ВЕРСИЙ
-local GUI_NAME = "LuxuryVR_V37_Omega"
+local GUI_NAME = "LuxuryVR_V38_Omega"
 pcall(function()
     if CoreGui:FindFirstChild(GUI_NAME) then CoreGui[GUI_NAME]:Destroy() end
     if player.PlayerGui:FindFirstChild(GUI_NAME) then player.PlayerGui[GUI_NAME]:Destroy() end
@@ -140,7 +140,7 @@ makeFreeDraggable(mainCard, header)
 
 local title = Instance.new("TextLabel", header)
 title.Size, title.Position = UDim2.new(1, -70, 0, 20), UDim2.new(0, 14, 0, 4)
-title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v37 OMEGA"
+title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v38 OMEGA"
 title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -302,7 +302,7 @@ end
 buildHandPad(handContL, true)
 buildHandPad(handContR, false)
 
--- // 5. АНАТОМИЯ РУК (РЕАЛИСТИЧНЫЙ МАСШТАБ И ПАЛЬЦЫ)
+-- // 5. АНАТОМИЯ РУК
 local function applyStyleToModel(model, styleIndex, targetPlayer)
     local st = STYLES[styleIndex or 1]
     local baseCol = st.Col
@@ -340,7 +340,6 @@ local function buildArm(isLeft, targetFolder, customStyle, targetPlayer)
         return p
     end
 
-    -- Солидные размеры для 1-го и 3-го лица
     mk("Forearm", Vector3.new(0.52, 0.42, 1.05))
     mk("Cuff", Vector3.new(0.56, 0.46, 0.12))
     mk("Palm", Vector3.new(0.48, 0.30, 0.52))
@@ -360,7 +359,7 @@ local function setupHands()
     leftArmModel, rightArmModel = buildArm(true), buildArm(false)
 end
 
--- // 6. СЕТЕВОЙ МОДУЛЬ С ПРИВАТНЫМ ПУЛОМ
+-- // 6. СЕТЕВОЙ МОДУЛЬ
 local function getWebSocketFunc()
     if syn and type(syn.websocket) == "table" and type(syn.websocket.connect) == "function" then
         return syn.websocket.connect
@@ -423,7 +422,7 @@ local function startNetworkSync()
                 wsConnection.OnMessage:Connect(function(msg)
                     pcall(function()
                         local data = HttpService:JSONDecode(msg)
-                        if type(data) == "table" and data.s == "VR37" and data.u ~= player.UserId and data.j == (game.JobId ~= "" and game.JobId or "LOBBY") then
+                        if type(data) == "table" and data.s == "VR38" and data.u ~= player.UserId and data.j == (game.JobId ~= "" and game.JobId or "LOBBY") then
                             local remotePlr = Players:GetPlayerByUserId(data.u)
                             if remotePlr and remotePlr.Character then
                                 if not remoteVRUsers[data.u] then
@@ -441,7 +440,6 @@ local function startNetworkSync()
                                 local u = remoteVRUsers[data.u]
                                 u.LastTick = tick()
 
-                                -- Динамическая смена скина чужих рук
                                 if u.Style ~= data.st then
                                     u.Style = data.st
                                     applyStyleToModel(u.Left, data.st, remotePlr)
@@ -522,7 +520,7 @@ if UserInputService.GyroscopeEnabled then
     gyroConnection = UserInputService.DeviceRotationChanged:Connect(function(_, rotCFrame) rawGyroCF = rotCFrame end)
 end
 
--- // 8. ГЛАВНЫЙ ЦИКЛ РЕНДЕРА
+-- // 8. ГЛАВНЫЙ ЦИКЛ РЕНДЕРА (С ДИНАМИЧЕСКИМ ПОДЪЕМОМ КАМЕРЫ)
 local function startVR()
     VR_ACTIVE = true
     camera.CameraType = Enum.CameraType.Scriptable
@@ -588,7 +586,7 @@ local function startVR()
                 end
             end
 
-            -- Камера
+            -- Вращение камеры
             local targetRot
             if CONTROL_MODE == "GYRO" then
                 local rx, ry, rz = baseGyroCF:ToObjectSpace(rawGyroCF):ToEulerAnglesYXZ()
@@ -598,16 +596,27 @@ local function startVR()
             end
 
             smoothedCamRot = smoothedCamRot:Lerp(targetRot, 0.4)
-            camera.CFrame = CFrame.new(head.Position + Vector3.new(0, IS_CROUCHING and -1.4 or 0.25, 0)) * smoothedCamRot
+
+            -- 🚶 ФИЗИКА ШАГОВ И ПОДЪЕМ КАМЕРЫ (DYNAMIC WALK LIFT)
+            local isMoving = root.AssemblyLinearVelocity.Magnitude > 1.5
+            bobStep = bobStep + dt * (isMoving and 8.5 or 2.2)
+            local bobX, bobY = math.sin(bobStep) * 0.018, math.cos(bobStep * 2) * 0.012
+
+            -- Подъем камеры на шаге (Head Bobbing) и естественный наклон тела
+            local camWalkLift = isMoving and (math.abs(math.sin(bobStep)) * 0.12) or 0
+            local camTiltRoll = isMoving and (math.sin(bobStep) * 0.014) or 0
+            local headBaseHeight = IS_CROUCHING and -1.4 or 0.25
+
+            camera.CFrame = CFrame.new(head.Position + Vector3.new(0, headBaseHeight + camWalkLift, 0)) 
+                * smoothedCamRot 
+                * CFrame.Angles(0, 0, camTiltRoll)
+                
             local camCF = camera.CFrame
 
-            -- Физика рук (Sway & Bobbing)
+            -- Физика инерции рук (Sway)
             local dRot = camCF:ToObjectSpace(lastCamCF)
             swayCF = swayCF:Lerp(CFrame.Angles(math.clamp(dRot.X * 0.4, -0.08, 0.08), math.clamp(dRot.Y * 0.4, -0.08, 0.08), 0), 0.25)
             lastCamCF = camCF
-
-            bobStep = bobStep + dt * (root.AssemblyLinearVelocity.Magnitude > 1 and 7 or 2)
-            local bobX, bobY = math.sin(bobStep) * 0.018, math.cos(bobStep * 2) * 0.012
 
             tapAlphaL = math.clamp(tapAlphaL - dt * 4, 0, 1)
             tapAlphaR = math.clamp(tapAlphaR - dt * 4, 0, 1)
@@ -624,7 +633,6 @@ local function startVR()
                 local baseAngle = CFrame.Angles(math.rad(-10 + off.Y * 18 - off.Z * 12), math.rad(-side * 6 + off.X * 16), math.rad(side * 5)) * userWrist
                 local finalAngle = baseAngle:Lerp(tRot, tAlpha * 0.8)
 
-                -- Пропорции обзора: X = +-0.62, Y = -0.56, Z = -1.02
                 local base = camCF * swayCF * CFrame.new(side * (0.62 - (side * bobX)) + off.X, -0.56 + bobY + off.Y, -1.02 + off.Z) * finalAngle
                 if isL then finalLeftCF = base else finalRightCF = base end
 
@@ -668,7 +676,7 @@ local function startVR()
                 lastNetSend = tick()
                 pcall(function()
                     local packet = {
-                        s = "VR37",
+                        s = "VR38",
                         u = player.UserId,
                         j = (game.JobId ~= "" and game.JobId or "LOBBY"),
                         st = HAND_STYLE,
