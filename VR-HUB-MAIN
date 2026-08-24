@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v14.0 (FULL 3D MESH TOOLS & ACCURATE GRIP)
+-- // 👑 LUXURY VR ENGINE v15.0 PRO MAX (TRUE TOOL GRIP & ZERO BODY CLIPPING)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -11,8 +11,8 @@ local camera = workspace.CurrentCamera
 -- Настройки и переменные
 local VR_ACTIVE = false
 local MINIMIZED = false
-local CONTROL_MODE = "TOUCH"
-local HAND_STYLE = 1
+local CONTROL_MODE = "TOUCH" -- "TOUCH" или "GYRO"
+local HAND_STYLE = 1 -- 1: Твой скин, 2: Неон, 3: Стелс
 local FOV_MODES = {70, 90, 110}
 local FOV_INDEX = 2
 local SENS_MULTIPLIER = 1.4
@@ -29,7 +29,7 @@ local smoothedCamRot = CFrame.identity
 local viewmodelFolder = nil
 local leftArmModel, rightArmModel = nil, nil
 
--- Система предметов в руках
+-- Система оружия / предметов
 local toolVisualFolder = nil
 local currentToolRef = nil
 local toolPartOffsets = {}
@@ -38,7 +38,7 @@ local mainLoopConnection = nil
 local physicsLoopConnection = nil
 local gyroConnection = nil
 
--- Интерактив (джойстики и тапы)
+-- Интерактив (джойстики и клики)
 local handDragL = Vector3.zero
 local handDragR = Vector3.zero
 local currentHandOffsetL = Vector3.zero
@@ -55,16 +55,16 @@ local bobStep = 0
 
 -- // 1. СОЗДАНИЕ UI
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "LuxuryVR_V14"
+screenGui.Name = "LuxuryVR_V15_ProMax"
 screenGui.ResetOnSpawn = false
 
 local success, _ = pcall(function() screenGui.Parent = CoreGui end)
 if not success then screenGui.Parent = player:WaitForChild("PlayerGui") end
 
--- Главная панель
+-- Главная панель (Dark Glass)
 local mainCard = Instance.new("Frame")
-mainCard.Size = UDim2.new(0, 210, 0, 195)
-mainCard.Position = UDim2.new(0.5, -105, 0.04, 0)
+mainCard.Size = UDim2.new(0, 215, 0, 200)
+mainCard.Position = UDim2.new(0.5, -107, 0.04, 0)
 mainCard.BackgroundColor3 = Color3.fromRGB(12, 14, 20)
 mainCard.BackgroundTransparency = 0.12
 mainCard.BorderSizePixel = 0
@@ -107,7 +107,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(0.6, 0, 0.12, 0)
 title.Position = UDim2.new(0.08, 0, 0.04, 0)
 title.BackgroundTransparency = 1
-title.Text = "👑 VR ENGINE v14"
+title.Text = "👑 VR PRO MAX v15"
 title.TextColor3 = Color3.fromRGB(240, 240, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 11
@@ -335,7 +335,20 @@ local function setupHands()
     rightArmModel = buildDetailedArm(false)
 end
 
--- // 3. ПОЛНОЦЕННОЕ КЛОНИРОВАНИЕ 3D МЕШЕЙ ОРУЖИЯ/ПРЕДМЕТОВ (БЕЗ СЕРОГО КУБА)
+-- // 3. ТОТАЛЬНОЕ СКРЫТИЕ ВСЕХ ЧАСТЕЙ ТЕЛА И ДУБЛИКАТОВ
+local function hideRealBodyAndEquippedTools()
+    local char = player.Character
+    if not char then return end
+
+    -- Принудительно скрываем ВСЕ части персонажа и тулов локально
+    for _, item in ipairs(char:GetDescendants()) do
+        if item:IsA("BasePart") then
+            item.LocalTransparencyModifier = 1
+        end
+    end
+end
+
+-- // 4. ПРАВИЛЬНЫЙ ХВАТ 3D-ПРЕДМЕТОВ (БЕЗ УПАВШЕГО ОРУЖИЯ И БЕЗ КОПИЙ)
 local function setupToolVisuals(tool)
     if toolVisualFolder then toolVisualFolder:Destroy() end
     toolVisualFolder = Instance.new("Folder")
@@ -351,7 +364,6 @@ local function setupToolVisuals(tool)
             local clone = item:Clone()
             clone:ClearAllChildren()
 
-            -- Копируем все меши, текстуры и декали
             for _, sub in ipairs(item:GetChildren()) do
                 if sub:IsA("SpecialMesh") or sub:IsA("Decal") or sub:IsA("Texture") or sub:IsA("SurfaceAppearance") then
                     sub:Clone().Parent = clone
@@ -363,7 +375,6 @@ local function setupToolVisuals(tool)
             clone.CanQuery = false
             clone.Anchored = true
             clone.CastShadow = false
-            -- СОХРАНЯЕМ ОРИГИНАЛЬНУЮ ПРОЗРАЧНОСТЬ (Невидимые хитбоксы остаются невидимыми!)
             clone.Transparency = item.Transparency
             clone.Parent = toolVisualFolder
 
@@ -384,14 +395,6 @@ local function updateHeldTool()
             setupToolVisuals(currentTool)
         end
 
-        -- Скрываем настоящий предмет на персонаже
-        for _, item in ipairs(currentTool:GetDescendants()) do
-            if item:IsA("BasePart") then
-                item.LocalTransparencyModifier = 1
-            end
-        end
-
-        -- Позиционируем оружие прямо в ладони с учетом хвата (Grip)
         local palm = rightArmModel and rightArmModel:FindFirstChild("Palm")
         local handle = currentTool:FindFirstChild("Handle") or currentTool:FindFirstChildWhichIsA("BasePart", true)
         
@@ -399,10 +402,11 @@ local function updateHeldTool()
             local gripCF = currentTool.Grip
             local targetHandleCF
 
+            -- ИСПРАВЛЕННЫЙ ХВАТ: Оружие стоит ровно вперед/вверх, а не падает
             if gripCF ~= CFrame.identity then
-                targetHandleCF = palm.CFrame * CFrame.new(0, -0.05, -0.2) * gripCF:Inverse()
+                targetHandleCF = palm.CFrame * CFrame.new(0, 0.1, -0.25) * gripCF:Inverse()
             else
-                targetHandleCF = palm.CFrame * CFrame.new(0, -0.05, -0.4) * CFrame.Angles(math.rad(-90), 0, 0)
+                targetHandleCF = palm.CFrame * CFrame.new(0, 0.1, -0.35) * CFrame.Angles(0, 0, 0)
             end
 
             for _, data in ipairs(toolPartOffsets) do
@@ -423,7 +427,7 @@ local function updateHeldTool()
     end
 end
 
--- // 4. УПРАВЛЕНИЕ КАМЕРОЙ И ТАПАМИ
+-- // 5. УПРАВЛЕНИЕ КАМЕРОЙ И ТАПАМИ
 UserInputService.InputBegan:Connect(function(input, processed)
     if not VR_ACTIVE then return end
     
@@ -435,7 +439,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
             cameraTouchInput = input
         end
 
-        -- Тапы в точку экрана
         local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
         local localDir = camera.CFrame:VectorToObjectSpace(ray.Direction).Unit
 
@@ -473,7 +476,7 @@ if UserInputService.GyroscopeEnabled then
     end)
 end
 
--- // 5. ГЛАВНЫЙ ЦИКЛ VR
+-- // 6. ГЛАВНЫЙ ЦИКЛ VR
 local function startVR()
     VR_ACTIVE = true
     camera.CameraType = Enum.CameraType.Scriptable
@@ -514,11 +517,8 @@ local function startVR()
         local char = player.Character
         if not char then return end
 
-        for _, item in ipairs(char:GetDescendants()) do
-            if item:IsA("BasePart") and (item.Name == "Head" or item:FindFirstAncestorOfClass("Accessory")) then
-                item.LocalTransparencyModifier = 1
-            end
-        end
+        -- Полное скрытие тела персонажа
+        hideRealBodyAndEquippedTools()
 
         local head = char:FindFirstChild("Head")
         local root = char:FindFirstChild("HumanoidRootPart")
@@ -637,7 +637,7 @@ local function stopVR()
     cardStroke.Color = Color3.fromRGB(0, 255, 180)
 end
 
--- // 6. ИНТЕРАКТИВ КНОПОК
+-- // 7. ИНТЕРАКТИВ КНОПОК
 toggleBtn.MouseButton1Click:Connect(function()
     if VR_ACTIVE then stopVR() else startVR() end
 end)
@@ -704,7 +704,7 @@ minBtn.MouseButton1Click:Connect(function()
         minBtn.Text = "VR"
         minBtn.Position = UDim2.new(0, 7, 0, 7)
     else
-        mainCard:TweenSize(UDim2.new(0, 210, 0, 195), "Out", "Quad", 0.2, true)
+        mainCard:TweenSize(UDim2.new(0, 215, 0, 200), "Out", "Quad", 0.2, true)
         task.wait(0.15)
         for _, ch in ipairs(mainCard:GetChildren()) do
             if ch:IsA("GuiObject") and ch ~= minBtn and ch ~= cardStroke then
