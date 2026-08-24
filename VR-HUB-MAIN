@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v36.0 OMEGA (DEDICATED PRIVATE SERVER & ULTRA RIG)
+-- // 👑 LUXURY VR ENGINE v37.0 OMEGA (REALISTIC SCALE & FULL SKIN SYNC)
 
 -- ==============================================================================
 -- 🚀 ТВОЙ ЛИЧНЫЙ ПРИВАТНЫЙ WEBSOCKET СЕРВЕР:
@@ -17,7 +17,7 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 -- // 1. ОЧИСТКА ПРЕДЫДУЩИХ ВЕРСИЙ
-local GUI_NAME = "LuxuryVR_V36_Private"
+local GUI_NAME = "LuxuryVR_V37_Omega"
 pcall(function()
     if CoreGui:FindFirstChild(GUI_NAME) then CoreGui[GUI_NAME]:Destroy() end
     if player.PlayerGui:FindFirstChild(GUI_NAME) then player.PlayerGui[GUI_NAME]:Destroy() end
@@ -59,7 +59,7 @@ local netAttemptId = 0
 local remoteVRUsers = {}
 local lastNetSend = 0
 
--- 10 Лакшери Стилей Рук
+-- // 10 УНИКАЛЬНЫХ СТИЛЕЙ РУК
 local STYLES = {
     {Name = "ТВОЙ СКИН", Col = nil, Cuff = Color3.fromRGB(0, 255, 180), Mat = Enum.Material.SmoothPlastic},
     {Name = "НЕОН КИБЕР", Col = Color3.fromRGB(15, 20, 28), Cuff = Color3.fromRGB(0, 240, 255), Mat = Enum.Material.Neon},
@@ -140,7 +140,7 @@ makeFreeDraggable(mainCard, header)
 
 local title = Instance.new("TextLabel", header)
 title.Size, title.Position = UDim2.new(1, -70, 0, 20), UDim2.new(0, 14, 0, 4)
-title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v36 (PRIVATE WS)"
+title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v37 OMEGA"
 title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -192,7 +192,7 @@ local netToggleBtn = makeHubBtn("🌐 СЕТЬ: ВКЛЮЧЕНА", UDim2.new(0, 
 local crouchBtn    = makeHubBtn("🧎 ПРИСЕСТЬ", UDim2.new(0, 12, 0, 208), Color3.fromRGB(18, 20, 26), Color3.fromRGB(180, 220, 255))
 local calibBtn     = makeHubBtn("🎯 ЦЕНТР КАМЕРЫ", UDim2.new(0, 182, 0, 208), Color3.fromRGB(18, 20, 26), Color3.fromRGB(200, 200, 220))
 
--- // 4. УПРАВЛЕНИЕ: D-PAD И ДЖОЙСТИКИ РУК
+-- // 4. УПРАВЛЕНИЕ: D-PAD И ПАДЫ
 local function createPadContainer(size, pos)
     local c = Instance.new("Frame", screenGui)
     c.Size, c.Position, c.BackgroundTransparency, c.Visible, c.Active = size, pos, 1, false, true
@@ -302,30 +302,52 @@ end
 buildHandPad(handContL, true)
 buildHandPad(handContR, false)
 
--- // 5. МОДЕЛИ РУК
-local function buildArm(isLeft, targetFolder, customStyle)
+-- // 5. АНАТОМИЯ РУК (РЕАЛИСТИЧНЫЙ МАСШТАБ И ПАЛЬЦЫ)
+local function applyStyleToModel(model, styleIndex, targetPlayer)
+    local st = STYLES[styleIndex or 1]
+    local baseCol = st.Col
+    local cuffCol = st.Cuff
+    local mat = st.Mat
+
+    if styleIndex == 1 then
+        local targetChar = targetPlayer and targetPlayer.Character or player.Character
+        local bodyPart = targetChar and (targetChar:FindFirstChild("LeftHand") or targetChar:FindFirstChild("Left Arm") or targetChar:FindFirstChild("Head"))
+        baseCol = bodyPart and bodyPart.Color or Color3.fromRGB(225, 185, 145)
+    end
+
+    for _, p in ipairs(model:GetChildren()) do
+        if p:IsA("BasePart") then
+            if p.Name == "Cuff" then
+                p.Color = cuffCol
+                p.Material = Enum.Material.Neon
+            else
+                p.Color = baseCol or Color3.fromRGB(225, 185, 145)
+                p.Material = mat
+            end
+        end
+    end
+end
+
+local function buildArm(isLeft, targetFolder, customStyle, targetPlayer)
     local m = Instance.new("Model")
     m.Name = isLeft and "VR_L" or "VR_R"
-    local st = STYLES[customStyle or HAND_STYLE]
-    local c, cuffC, mat = st.Col, st.Cuff, st.Mat
-    if not customStyle and HAND_STYLE == 1 then
-        local char = player.Character
-        local rp = char and (char:FindFirstChild(isLeft and "LeftHand" or "RightHand") or char:FindFirstChild(isLeft and "Left Arm" or "Right Arm") or char:FindFirstChild("Head"))
-        c = rp and rp.Color or Color3.fromRGB(225, 185, 145)
-    end
+
     local function mk(name, sz)
         local p = Instance.new("Part")
-        p.Name, p.Size, p.Color, p.Material = name, sz, (name == "Cuff" and cuffC or (c or Color3.fromRGB(225, 185, 145))), (name == "Cuff" and Enum.Material.Neon or mat)
+        p.Name, p.Size = name, sz
         p.TopSurface, p.BottomSurface, p.LeftSurface, p.RightSurface, p.FrontSurface, p.BackSurface = 0,0,0,0,0,0
         p.CanCollide, p.CanTouch, p.CanQuery, p.Anchored, p.CastShadow, p.Parent = false, false, false, true, false, m
         return p
     end
 
-    mk("Forearm", Vector3.new(0.36, 0.28, 0.85))
-    mk("Cuff", Vector3.new(0.40, 0.32, 0.08))
-    mk("Palm", Vector3.new(0.35, 0.20, 0.42))
-    mk("Fingers", Vector3.new(0.33, 0.14, 0.25))
-    mk("Thumb", Vector3.new(0.12, 0.14, 0.20))
+    -- Солидные размеры для 1-го и 3-го лица
+    mk("Forearm", Vector3.new(0.52, 0.42, 1.05))
+    mk("Cuff", Vector3.new(0.56, 0.46, 0.12))
+    mk("Palm", Vector3.new(0.48, 0.30, 0.52))
+    mk("Fingers", Vector3.new(0.44, 0.20, 0.32))
+    mk("Thumb", Vector3.new(0.16, 0.20, 0.26))
+
+    applyStyleToModel(m, customStyle or HAND_STYLE, targetPlayer or player)
     m.Parent = targetFolder or viewmodelFolder
     return m
 end
@@ -338,7 +360,7 @@ local function setupHands()
     leftArmModel, rightArmModel = buildArm(true), buildArm(false)
 end
 
--- // 6. СЕТЕВОЙ МОДУЛЬ С ТВОИМ ПРИВАТНЫМ СОКЕТОМ
+-- // 6. СЕТЕВОЙ МОДУЛЬ С ПРИВАТНЫМ ПУЛОМ
 local function getWebSocketFunc()
     if syn and type(syn.websocket) == "table" and type(syn.websocket.connect) == "function" then
         return syn.websocket.connect
@@ -391,7 +413,6 @@ local function startNetworkSync()
                 netStatus.Text = "🟢 VR: Активен | 🟢 ПРИВАТНЫЙ СОКЕТ: Онлайн"
                 netStatus.TextColor3 = Color3.fromRGB(0, 255, 180)
 
-                -- Heartbeat пинг каждые 15 сек
                 heartbeatThread = task.spawn(function()
                     while wsConnection and VR_ACTIVE and NETWORK_ENABLED do
                         task.wait(15)
@@ -402,7 +423,7 @@ local function startNetworkSync()
                 wsConnection.OnMessage:Connect(function(msg)
                     pcall(function()
                         local data = HttpService:JSONDecode(msg)
-                        if type(data) == "table" and data.s == "VR36" and data.u ~= player.UserId and data.j == (game.JobId ~= "" and game.JobId or "LOBBY") then
+                        if type(data) == "table" and data.s == "VR37" and data.u ~= player.UserId and data.j == (game.JobId ~= "" and game.JobId or "LOBBY") then
                             local remotePlr = Players:GetPlayerByUserId(data.u)
                             if remotePlr and remotePlr.Character then
                                 if not remoteVRUsers[data.u] then
@@ -410,14 +431,22 @@ local function startNetworkSync()
                                     rFolder.Name = "RemoteVR_" .. data.u
                                     remoteVRUsers[data.u] = {
                                         Folder = rFolder,
-                                        Left = buildArm(true, rFolder, data.st),
-                                        Right = buildArm(false, rFolder, data.st),
+                                        Left = buildArm(true, rFolder, data.st, remotePlr),
+                                        Right = buildArm(false, rFolder, data.st, remotePlr),
+                                        Style = data.st,
                                         LastTick = tick()
                                     }
                                 end
 
                                 local u = remoteVRUsers[data.u]
                                 u.LastTick = tick()
+
+                                -- Динамическая смена скина чужих рук
+                                if u.Style ~= data.st then
+                                    u.Style = data.st
+                                    applyStyleToModel(u.Left, data.st, remotePlr)
+                                    applyStyleToModel(u.Right, data.st, remotePlr)
+                                end
 
                                 if data.lp and data.lr and data.rp and data.rr then
                                     local lCF = CFrame.new(unpack(data.lp)) * CFrame.Angles(unpack(data.lr))
@@ -427,11 +456,11 @@ local function startNetworkSync()
                                         local f, c, p, fg, th = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("Palm"), arm:FindFirstChild("Fingers"), arm:FindFirstChild("Thumb")
                                         local side = isL and -1 or 1
                                         if f and c and p and fg then
-                                            f.CFrame = baseCF * CFrame.new(0, -0.02, 0.32)
-                                            c.CFrame = baseCF * CFrame.new(0, -0.01, -0.06)
-                                            p.CFrame = baseCF * CFrame.new(0, 0, -0.26)
-                                            fg.CFrame = baseCF * CFrame.new(0, -0.02, -0.48) * CFrame.Angles(math.rad(-10), 0, 0)
-                                            if th then th.CFrame = baseCF * CFrame.new(side * 0.16, -0.02, -0.24) * CFrame.Angles(0, math.rad(side * 25), 0) end
+                                            f.CFrame = baseCF * CFrame.new(0, -0.02, 0.40)
+                                            c.CFrame = baseCF * CFrame.new(0, -0.01, -0.08)
+                                            p.CFrame = baseCF * CFrame.new(0, 0, -0.32)
+                                            fg.CFrame = baseCF * CFrame.new(0, -0.03, -0.62) * CFrame.Angles(math.rad(-10), 0, 0)
+                                            if th then th.CFrame = baseCF * CFrame.new(side * 0.22, -0.02, -0.30) * CFrame.Angles(0, math.rad(side * 28), math.rad(side * 10)) end
                                         end
                                     end
                                     applyRemote(u.Left, true, lCF)
@@ -469,9 +498,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
         local localDir = camera.CFrame:VectorToObjectSpace(ray.Direction).Unit
         local aimRot = CFrame.lookAt(Vector3.zero, localDir)
         if input.Position.X < camera.ViewportSize.X * 0.5 then
-            tapReachL, tapRotL, tapAlphaL = localDir * 1.2, aimRot, 1
+            tapReachL, tapRotL, tapAlphaL = localDir * 1.3, aimRot, 1
         else
-            tapReachR, tapRotR, tapAlphaR = localDir * 1.2, aimRot, 1
+            tapReachR, tapRotR, tapAlphaR = localDir * 1.3, aimRot, 1
         end
     end
 end)
@@ -534,7 +563,7 @@ local function startVR()
             local head = char:FindFirstChild("Head")
             if not head or not root or not humanoid then return end
 
-            -- Скрытие своего тела
+            -- 100% скрытие тела локально
             local currentTool = char:FindFirstChildOfClass("Tool")
             for _, item in ipairs(char:GetDescendants()) do
                 if item:IsA("BasePart") or item:IsA("Decal") then
@@ -595,16 +624,17 @@ local function startVR()
                 local baseAngle = CFrame.Angles(math.rad(-10 + off.Y * 18 - off.Z * 12), math.rad(-side * 6 + off.X * 16), math.rad(side * 5)) * userWrist
                 local finalAngle = baseAngle:Lerp(tRot, tAlpha * 0.8)
 
-                local base = camCF * swayCF * CFrame.new(side * (0.58 - (side * bobX)) + off.X, -0.52 + bobY + off.Y, -0.92 + off.Z) * finalAngle
+                -- Пропорции обзора: X = +-0.62, Y = -0.56, Z = -1.02
+                local base = camCF * swayCF * CFrame.new(side * (0.62 - (side * bobX)) + off.X, -0.56 + bobY + off.Y, -1.02 + off.Z) * finalAngle
                 if isL then finalLeftCF = base else finalRightCF = base end
 
                 local f, c, p, fg, th = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("Palm"), arm:FindFirstChild("Fingers"), arm:FindFirstChild("Thumb")
                 if f and c and p and fg then
-                    f.CFrame = base * CFrame.new(0, -0.02, 0.32)
-                    c.CFrame = base * CFrame.new(0, -0.01, -0.06)
-                    p.CFrame = base * CFrame.new(0, 0, -0.26)
-                    fg.CFrame = base * CFrame.new(0, -0.02, -0.48) * CFrame.Angles(math.rad(-10), 0, 0)
-                    if th then th.CFrame = base * CFrame.new(side * 0.16, -0.02, -0.24) * CFrame.Angles(0, math.rad(side * 25), 0) end
+                    f.CFrame = base * CFrame.new(0, -0.02, 0.40)
+                    c.CFrame = base * CFrame.new(0, -0.01, -0.08)
+                    p.CFrame = base * CFrame.new(0, 0, -0.32)
+                    fg.CFrame = base * CFrame.new(0, -0.03, -0.62) * CFrame.Angles(math.rad(-10), 0, 0)
+                    if th then th.CFrame = base * CFrame.new(side * 0.22, -0.02, -0.30) * CFrame.Angles(0, math.rad(side * 28), math.rad(side * 10)) end
                 end
             end
 
@@ -638,7 +668,7 @@ local function startVR()
                 lastNetSend = tick()
                 pcall(function()
                     local packet = {
-                        s = "VR36",
+                        s = "VR37",
                         u = player.UserId,
                         j = (game.JobId ~= "" and game.JobId or "LOBBY"),
                         st = HAND_STYLE,
@@ -703,7 +733,9 @@ end)
 handStyleBtn.MouseButton1Click:Connect(function()
     HAND_STYLE = HAND_STYLE % #STYLES + 1
     handStyleBtn.Text = "🎨 СТИЛЬ: " .. HAND_STYLE .. "/10 " .. STYLES[HAND_STYLE].Name
-    if VR_ACTIVE then setupHands() end
+    if VR_ACTIVE then 
+        setupHands() 
+    end
 end)
 
 padModeBtn.MouseButton1Click:Connect(function()
