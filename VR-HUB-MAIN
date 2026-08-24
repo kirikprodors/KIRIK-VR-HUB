@@ -1,9 +1,10 @@
--- // 👑 LUXURY VR ENGINE v21.0 OMEGA (CUSTOM UI, PROXIMITY FIX, 6 SKINS & SAVED ROTATION)
+-- // 👑 LUXURY VR ENGINE v23.0 OMEGA PRO MAX (MULTIPLAYER RELAY & PERFECT DRAGGABLE UI)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 
 local player = Players.LocalPlayer
@@ -38,6 +39,12 @@ local tapRotL, tapRotR = CFrame.identity, CFrame.identity
 local tapAlphaL, tapAlphaR = 0, 0
 local swayCF, lastCamCF, bobStep = CFrame.identity, camera.CFrame, 0
 
+-- Мультиплеер
+local wsConnection = nil
+local remoteVRUsers = {}
+local lastNetSend = 0
+local onlineCount = 1
+
 -- // СТИЛИ РУК
 local STYLES = {
     {Name = "ТВОЙ СКИН", Col = nil, Cuff = Color3.fromRGB(0, 255, 180), Mat = Enum.Material.SmoothPlastic},
@@ -48,158 +55,196 @@ local STYLES = {
     {Name = "МЕХА РОБОТ", Col = Color3.fromRGB(150, 150, 160), Cuff = Color3.fromRGB(255, 100, 0), Mat = Enum.Material.Metal}
 }
 
--- // 1. ГЛАВНЫЙ ИНТЕРФЕЙС (ХАБ)
+-- // 1. ГЛАВНЫЙ ИНТЕРФЕЙС
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "LuxuryVR_V21_Omega"
+screenGui.Name = "LuxuryVR_V23_Omega"
 screenGui.ResetOnSpawn = false
 pcall(function() screenGui.Parent = CoreGui end)
 if not screenGui.Parent then screenGui.Parent = player:WaitForChild("PlayerGui") end
 
--- Функция перетаскивания (Драг)
-local function makeDraggable(frame, triggerFrame)
+-- Функция плавного перетаскивания
+local function makeAlwaysDraggable(frame, handle)
     local dragToggle, dragStart, startPos = false, nil, nil
-    (triggerFrame or frame).InputBegan:Connect(function(input)
-        if EDITING_UI and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) then
-            dragToggle = true
-            dragStart = input.Position
-            startPos = frame.Position
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragToggle, dragStart, startPos = true, input.Position, frame.Position
         end
     end)
     UserInputService.InputChanged:Connect(function(input)
-        if dragToggle and EDITING_UI and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+        if dragToggle and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
             local delta = input.Position - dragStart
             frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then dragToggle = false end
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragToggle = false
+        end
     end)
 end
 
--- ХАБ
+-- ГЛАВНАЯ КАРТОЧКА
 local mainCard = Instance.new("Frame")
-mainCard.Size = UDim2.new(0, 340, 0, 220)
+mainCard.Size = UDim2.new(0, 340, 0, 225)
 mainCard.Position = UDim2.new(0.5, -170, 0.04, 0)
 mainCard.BackgroundColor3 = Color3.fromRGB(12, 14, 20)
 mainCard.BackgroundTransparency = 0.1
 mainCard.BorderSizePixel = 0
 mainCard.Active = true
 mainCard.Parent = screenGui
+
 Instance.new("UICorner", mainCard).CornerRadius = UDim.new(0, 16)
 local cardStroke = Instance.new("UIStroke", mainCard)
 cardStroke.Thickness = 1.5
 cardStroke.Color = Color3.fromRGB(0, 255, 180)
 cardStroke.Transparency = 0.3
-makeDraggable(mainCard, mainCard)
 
-local title = Instance.new("TextLabel", mainCard)
-title.Size, title.Position = UDim2.new(1, -60, 0, 30), UDim2.new(0, 15, 0, 5)
-title.BackgroundTransparency, title.Text = 1, "👑 VR PRO MAX OMEGA"
-title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 13
+-- ХЕДЕР ДЛЯ ПЕРЕТАСКИВАНИЯ
+local headerFrame = Instance.new("Frame", mainCard)
+headerFrame.Size = UDim2.new(1, 0, 0, 38)
+headerFrame.BackgroundTransparency = 1
+headerFrame.Active = true
+makeAlwaysDraggable(mainCard, headerFrame)
+
+local title = Instance.new("TextLabel", headerFrame)
+title.Size = UDim2.new(1, -70, 0, 22)
+title.Position = UDim2.new(0, 15, 0, 4)
+title.BackgroundTransparency = 1
+title.Text = "👑 VR PRO MAX v23"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 
-local closeBtn = Instance.new("TextButton", mainCard)
-closeBtn.Size, closeBtn.Position = UDim2.new(0, 24, 0, 24), UDim2.new(1, -34, 0, 8)
-closeBtn.BackgroundColor3, closeBtn.TextColor3 = Color3.fromRGB(40, 20, 25), Color3.fromRGB(255, 75, 75)
-closeBtn.Text, closeBtn.Font, closeBtn.TextSize = "✕", Enum.Font.GothamBold, 11
+-- Статус мультиплеера
+local netStatusLbl = Instance.new("TextLabel", headerFrame)
+netStatusLbl.Size = UDim2.new(1, -70, 0, 14)
+netStatusLbl.Position = UDim2.new(0, 15, 0, 22)
+netStatusLbl.BackgroundTransparency = 1
+netStatusLbl.Text = "🟢 VR СЕТЬ: 1 игрок"
+netStatusLbl.TextColor3 = Color3.fromRGB(0, 255, 180)
+netStatusLbl.Font = Enum.Font.GothamMedium
+netStatusLbl.TextSize = 9
+netStatusLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Кнопки хедера
+local closeBtn = Instance.new("TextButton", headerFrame)
+closeBtn.Size = UDim2.new(0, 24, 0, 24)
+closeBtn.Position = UDim2.new(1, -34, 0, 7)
+closeBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 25)
+closeBtn.TextColor3 = Color3.fromRGB(255, 75, 75)
+closeBtn.Text = "✕"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 11
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
 
-local minBtn = Instance.new("TextButton", mainCard)
-minBtn.Size, minBtn.Position = UDim2.new(0, 24, 0, 24), UDim2.new(1, -64, 0, 8)
-minBtn.BackgroundColor3, minBtn.TextColor3 = Color3.fromRGB(25, 25, 35), Color3.fromRGB(200, 200, 220)
-minBtn.Text, minBtn.Font, minBtn.TextSize = "—", Enum.Font.GothamBold, 11
+local minBtn = Instance.new("TextButton", headerFrame)
+minBtn.Size = UDim2.new(0, 24, 0, 24)
+minBtn.Position = UDim2.new(1, -64, 0, 7)
+minBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+minBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+minBtn.Text = "—"
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 11
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
 
+-- ПЛАВАЮЩАЯ НЕОНОВАЯ КНОПКА-СФЕРА ПРИ СВОРАЧИВАНИИ
+local floatOrb = Instance.new("TextButton", screenGui)
+floatOrb.Size = UDim2.new(0, 52, 0, 52)
+floatOrb.Position = UDim2.new(0.5, -26, 0.05, 0)
+floatOrb.BackgroundColor3 = Color3.fromRGB(15, 18, 26)
+floatOrb.Text = "👑\nVR"
+floatOrb.TextColor3 = Color3.fromRGB(0, 255, 180)
+floatOrb.Font = Enum.Font.GothamBold
+floatOrb.TextSize = 11
+floatOrb.Visible = false
+floatOrb.Active = true
+Instance.new("UICorner", floatOrb).CornerRadius = UDim.new(1, 0)
+local orbStroke = Instance.new("UIStroke", floatOrb)
+orbStroke.Thickness = 2
+orbStroke.Color = Color3.fromRGB(0, 255, 180)
+makeAlwaysDraggable(floatOrb, floatOrb)
+
+-- Генератор кнопок меню
 local function makeBtn(txt, pos, col, tCol)
     local b = Instance.new("TextButton", mainCard)
-    b.Size, b.Position = UDim2.new(0, 150, 0, 35), pos
-    b.BackgroundColor3, b.TextColor3, b.Text = col, tCol, txt
-    b.Font, b.TextSize = Enum.Font.GothamBold, 10
+    b.Size = UDim2.new(0, 150, 0, 36)
+    b.Position = pos
+    b.BackgroundColor3 = col
+    b.TextColor3 = tCol
+    b.Text = txt
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 10
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
     return b
 end
 
--- ЛЕВАЯ КОЛОНКА
-local toggleBtn   = makeBtn("⏻ ВКЛЮЧИТЬ VR", UDim2.new(0, 10, 0, 45), Color3.fromRGB(22, 24, 32), Color3.fromRGB(0, 255, 180))
-local modeBtn     = makeBtn("👆 ПОВОРОТ: ПАЛЬЦЕМ", UDim2.new(0, 10, 0, 85), Color3.fromRGB(20, 22, 30), Color3.fromRGB(255, 180, 0))
-local padModeBtn  = makeBtn("🖐️ ПАДЫ: ДВИЖЕНИЕ", UDim2.new(0, 10, 0, 125), Color3.fromRGB(30, 20, 40), Color3.fromRGB(255, 100, 200))
-local uiEditBtn   = makeBtn("📍 РЕДАКТОР ИНТЕРФЕЙСА", UDim2.new(0, 10, 0, 165), Color3.fromRGB(22, 28, 38), Color3.fromRGB(0, 200, 255))
+local toggleBtn    = makeBtn("⏻ ВКЛЮЧИТЬ VR", UDim2.new(0, 10, 0, 48), Color3.fromRGB(22, 24, 32), Color3.fromRGB(0, 255, 180))
+local modeBtn      = makeBtn("👆 ПОВОРОТ: ПАЛЬЦЕМ", UDim2.new(0, 10, 0, 90), Color3.fromRGB(20, 22, 30), Color3.fromRGB(255, 180, 0))
+local padModeBtn   = makeBtn("🖐️ ПАДЫ: ДВИЖЕНИЕ", UDim2.new(0, 10, 0, 132), Color3.fromRGB(30, 20, 40), Color3.fromRGB(255, 100, 200))
+local uiEditBtn    = makeBtn("📍 РЕДАКТОР ИНТЕРФЕЙСА", UDim2.new(0, 10, 0, 174), Color3.fromRGB(22, 28, 38), Color3.fromRGB(0, 200, 255))
 
--- ПРАВАЯ КОЛОНКА
-local handStyleBtn = makeBtn("🎨 СТИЛЬ: ТВОЙ СКИН", UDim2.new(0, 170, 0, 45), Color3.fromRGB(18, 20, 28), Color3.fromRGB(240, 180, 255))
-local fovBtn       = makeBtn("👁️ FOV: 90°", UDim2.new(0, 170, 0, 85), Color3.fromRGB(18, 20, 26), Color3.fromRGB(255, 200, 100))
-local crouchBtn    = makeBtn("🧎 ПРИСЕСТЬ", UDim2.new(0, 170, 0, 125), Color3.fromRGB(18, 20, 26), Color3.fromRGB(180, 220, 255))
-local calibBtn     = makeBtn("🎯 ЦЕНТР КАМЕРЫ", UDim2.new(0, 170, 0, 165), Color3.fromRGB(18, 20, 26), Color3.fromRGB(200, 200, 220))
+local handStyleBtn = makeBtn("🎨 СТИЛЬ: ТВОЙ СКИН", UDim2.new(0, 175, 0, 48), Color3.fromRGB(18, 20, 28), Color3.fromRGB(240, 180, 255))
+local fovBtn       = makeBtn("👁️ FOV: 90°", UDim2.new(0, 175, 0, 90), Color3.fromRGB(18, 20, 26), Color3.fromRGB(255, 200, 100))
+local crouchBtn    = makeBtn("🧎 ПРИСЕСТЬ", UDim2.new(0, 175, 0, 132), Color3.fromRGB(18, 20, 26), Color3.fromRGB(180, 220, 255))
+local calibBtn     = makeBtn("🎯 ЦЕНТР КАМЕРЫ", UDim2.new(0, 175, 0, 174), Color3.fromRGB(18, 20, 26), Color3.fromRGB(200, 200, 220))
 
--- // 2. КАСТОМНЫЙ PROXIMITY PROMPT (КНОПКА ДЛЯ ВЗАИМОДЕЙСТВИЯ С ПРЕДМЕТАМИ)
+-- // 2. КНОПКА ВЗАИМОДЕЙСТВИЯ (Proximity Prompt)
 local interactFrame = Instance.new("Frame", screenGui)
-interactFrame.Size, interactFrame.Position = UDim2.new(0, 200, 0, 50), UDim2.new(0.5, -100, 0.7, 0)
-interactFrame.BackgroundTransparency, interactFrame.Visible = 1, false
+interactFrame.Size = UDim2.new(0, 200, 0, 50)
+interactFrame.Position = UDim2.new(0.5, -100, 0.7, 0)
+interactFrame.BackgroundTransparency = 1
+interactFrame.Visible = false
+
 local interactBtn = Instance.new("TextButton", interactFrame)
-interactBtn.Size, interactBtn.Position = UDim2.new(1, 0, 1, 0), UDim2.new(0, 0, 0, 0)
-interactBtn.BackgroundColor3, interactBtn.BackgroundTransparency = Color3.fromRGB(255, 200, 50), 0.1
-interactBtn.Text, interactBtn.TextColor3 = "🖐️ ВЗЯТЬ (E)", Color3.fromRGB(20, 20, 20)
-interactBtn.Font, interactBtn.TextSize = Enum.Font.GothamBold, 16
+interactBtn.Size = UDim2.new(1, 0, 1, 0)
+interactBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 50)
+interactBtn.BackgroundTransparency = 0.1
+interactBtn.Text = "🖐️ ВЗЯТЬ (E)"
+interactBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
+interactBtn.Font = Enum.Font.GothamBold
+interactBtn.TextSize = 16
 Instance.new("UICorner", interactBtn).CornerRadius = UDim.new(0, 25)
-local interactStroke = Instance.new("UIStroke", interactBtn)
-interactStroke.Thickness, interactStroke.Color = 3, Color3.fromRGB(255, 255, 255)
+local iStrk = Instance.new("UIStroke", interactBtn)
+iStrk.Thickness, iStrk.Color = 3, Color3.fromRGB(255, 255, 255)
 
 local currentPrompt = nil
 ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
     if VR_ACTIVE and inputType == Enum.ProximityPromptInputType.Keyboard then
-        prompt.Style = Enum.ProximityPromptStyle.Custom -- Скрываем дефолтную табличку
+        prompt.Style = Enum.ProximityPromptStyle.Custom
         currentPrompt = prompt
         interactBtn.Text = "🖐️ " .. prompt.ActionText .. "\n" .. prompt.ObjectText
         interactFrame.Visible = true
     end
 end)
 ProximityPromptService.PromptHidden:Connect(function(prompt)
-    if currentPrompt == prompt then
-        currentPrompt = nil
-        interactFrame.Visible = false
-    end
+    if currentPrompt == prompt then currentPrompt = nil interactFrame.Visible = false end
 end)
-interactBtn.MouseButton1Down:Connect(function()
-    if currentPrompt then
-        interactBtn.BackgroundColor3 = Color3.fromRGB(200, 150, 30)
-        currentPrompt:InputHoldBegin()
-    end
-end)
-interactBtn.MouseButton1Up:Connect(function()
-    if currentPrompt then
-        interactBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 50)
-        currentPrompt:InputHoldEnd()
-    end
-end)
-interactBtn.MouseLeave:Connect(function()
-    if currentPrompt then
-        interactBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 50)
-        currentPrompt:InputHoldEnd()
-    end
-end)
+local function pDown() if currentPrompt then interactBtn.BackgroundColor3 = Color3.fromRGB(200, 150, 30) currentPrompt:InputHoldBegin() end end
+local function pUp() if currentPrompt then interactBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 50) currentPrompt:InputHoldEnd() end end
+interactBtn.MouseButton1Down:Connect(pDown) interactBtn.MouseButton1Up:Connect(pUp) interactBtn.MouseLeave:Connect(pUp)
 
--- // 3. УПРАВЛЕНИЕ: D-PAD И ДЖОЙСТИКИ РУК
-local function createUIContainer(name, size, pos, addLabel)
+-- // 3. УПРАВЛЕНИЕ: D-PAD И ПАДЫ РУК
+local function createUIContainer(name, size, pos)
     local c = Instance.new("Frame", screenGui)
     c.Size, c.Position, c.BackgroundTransparency, c.Visible, c.Active = size, pos, 1, false, true
     local strk = Instance.new("UIStroke", c)
     strk.Thickness, strk.Color, strk.Enabled = 2, Color3.fromRGB(0, 255, 255), false
     Instance.new("UICorner", c).CornerRadius = UDim.new(0, 14)
-    if addLabel then
-        local lbl = Instance.new("TextLabel", c)
-        lbl.Size, lbl.Position, lbl.BackgroundTransparency = UDim2.new(1,0,0,20), UDim2.new(0,0,-0.18,0), 1
-        lbl.Text, lbl.TextColor3, lbl.Font, lbl.TextSize = "✋ ТАЩИ СЮДА", Color3.fromRGB(0, 255, 255), Enum.Font.GothamBold, 10
-        lbl.Visible, lbl.Name = false, "DragLbl"
-    end
-    makeDraggable(c)
+    
+    local lbl = Instance.new("TextLabel", c)
+    lbl.Size, lbl.Position, lbl.BackgroundTransparency = UDim2.new(1,0,0,20), UDim2.new(0,0,-0.18,0), 1
+    lbl.Text, lbl.TextColor3, lbl.Font, lbl.TextSize = "✋ ТАЩИ СЮДА", Color3.fromRGB(0, 255, 255), Enum.Font.GothamBold, 10
+    lbl.Visible, lbl.Name = false, "DragLbl"
+    
+    makeAlwaysDraggable(c, c)
     return c, strk
 end
 
-local dpadContainer, dpadStroke = createUIContainer("DPad", UDim2.new(0, 140, 0, 140), UDim2.new(0, 20, 1, -165), true)
-local handContL, strokeL = createUIContainer("HandL", UDim2.new(0, 100, 0, 100), UDim2.new(0, 10, 0.38, 0), true)
-local handContR, strokeR = createUIContainer("HandR", UDim2.new(0, 100, 0, 100), UDim2.new(1, -110, 0.38, 0), true)
+local dpadContainer, dpadStroke = createUIContainer("DPad", UDim2.new(0, 140, 0, 140), UDim2.new(0, 20, 1, -165))
+local handContL, strokeL = createUIContainer("HandL", UDim2.new(0, 100, 0, 100), UDim2.new(0, 10, 0.38, 0))
+local handContR, strokeR = createUIContainer("HandR", UDim2.new(0, 100, 0, 100), UDim2.new(1, -110, 0.38, 0))
 
--- Кнопки D-PAD
 local function makeDpadBtn(sym, pos, fn)
     local b = Instance.new("TextButton", dpadContainer)
     b.Size, b.Position, b.BackgroundColor3, b.BackgroundTransparency = UDim2.new(0,44,0,44), pos, Color3.fromRGB(16,18,26), 0.2
@@ -215,7 +260,6 @@ makeDpadBtn("▼", UDim2.new(0, 48, 0, 96), function(v) moveBackward = v end)
 makeDpadBtn("◄", UDim2.new(0, 0, 0, 48), function(v) moveLeft = v end)
 makeDpadBtn("►", UDim2.new(0, 96, 0, 48), function(v) moveRight = v end)
 
--- Джойстики рук
 local function buildHandPad(cont, isLeft)
     local pad = Instance.new("Frame", cont)
     pad.Size, pad.Position, pad.BackgroundColor3, pad.BackgroundTransparency = UDim2.new(0,72,0,72), UDim2.new(0.5,-36,0.5,-36), Color3.fromRGB(14,16,24), 0.2
@@ -264,20 +308,18 @@ local function buildHandPad(cont, isLeft)
 end
 buildHandPad(handContL, true) buildHandPad(handContR, false)
 
--- // 4. МОДЕЛИ РУК И ОРУЖИЯ
-local function buildArm(isLeft)
+-- // 4. СОЗДАНИЕ VR РУК
+local function buildArm(isLeft, targetFolder)
     local m = Instance.new("Model")
     m.Name = isLeft and "VR_L" or "VR_R"
     local st = STYLES[HAND_STYLE]
     local c, cuffC, mat = st.Col, st.Cuff, st.Mat
-    
     if HAND_STYLE == 1 then
         local char = player.Character
         local rp = char and (char:FindFirstChild(isLeft and "LeftHand" or "RightHand") or char:FindFirstChild(isLeft and "Left Arm" or "Right Arm") or char:FindFirstChild("Head"))
         c = rp and rp.Color or Color3.fromRGB(225, 185, 145)
     end
-
-    local function mk(name, sz, offZ)
+    local function mk(name, sz)
         local p = Instance.new("Part")
         p.Name, p.Size, p.Color, p.Material = name, sz, (name == "Cuff" and cuffC or c), (name == "Cuff" and Enum.Material.Neon or mat)
         p.TopSurface, p.BottomSurface, p.LeftSurface, p.RightSurface, p.FrontSurface, p.BackSurface = 0,0,0,0,0,0
@@ -288,7 +330,7 @@ local function buildArm(isLeft)
     mk("Cuff", Vector3.new(0.52, 0.52, 0.1))
     mk("Palm", Vector3.new(0.44, 0.35, 0.5))
     mk("Fingers", Vector3.new(0.42, 0.28, 0.3))
-    m.Parent = viewmodelFolder
+    m.Parent = targetFolder or viewmodelFolder
     return m
 end
 
@@ -300,13 +342,73 @@ local function setupHands()
     leftArmModel, rightArmModel = buildArm(true), buildArm(false)
 end
 
--- // 5. ИНТЕРАКТИВ (КАМЕРА И ТАПЫ)
+-- // 5. СЕТЕВОЙ МОДУЛЬ (MULTIPLAYER RELAY)
+local function startNetworkSync()
+    pcall(function()
+        local socket = nil
+        local wsFunc = (WebSocket and WebSocket.connect) or (syn and syn.websocket and syn.websocket.connect)
+        if wsFunc then
+            socket = wsFunc("wss://broker.emqx.io:8084/mqtt")
+        end
+
+        if socket then
+            wsConnection = socket
+            netStatusLbl.Text = "🟢 VR СЕТЬ: Подключено"
+            netStatusLbl.TextColor3 = Color3.fromRGB(0, 255, 180)
+
+            socket.OnMessage:Connect(function(msg)
+                pcall(function()
+                    local data = HttpService:JSONDecode(msg)
+                    if data and data.userId and data.userId ~= player.UserId and data.jobId == (game.JobId ~= "" and game.JobId or "LOBBY") then
+                        local remotePlr = Players:GetPlayerByUserId(data.userId)
+                        if remotePlr and remotePlr.Character then
+                            local rChar = remotePlr.Character
+                            if not remoteVRUsers[data.userId] then
+                                local rFolder = Instance.new("Folder", workspace)
+                                rFolder.Name = "RemoteVR_" .. data.userId
+                                remoteVRUsers[data.userId] = {
+                                    Folder = rFolder,
+                                    Left = buildArm(true, rFolder),
+                                    Right = buildArm(false, rFolder),
+                                    LastTick = tick()
+                                }
+                            end
+
+                            local userObj = remoteVRUsers[data.userId]
+                            userObj.LastTick = tick()
+
+                            -- Парсим координаты
+                            local lCF = CFrame.new(unpack(data.lPos)) * CFrame.Angles(unpack(data.lRot))
+                            local rCF = CFrame.new(unpack(data.rPos)) * CFrame.Angles(unpack(data.rRot))
+
+                            local function applyRemote(arm, baseCF)
+                                local f, c, p, fg = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("Palm"), arm:FindFirstChild("Fingers")
+                                if f and c and p and fg then
+                                    f.CFrame = baseCF * CFrame.new(0, 0, 0.35)
+                                    c.CFrame = baseCF * CFrame.new(0, 0, -0.22)
+                                    p.CFrame = baseCF * CFrame.new(0, -0.02, -0.5) * CFrame.Angles(math.rad(8), 0, 0)
+                                    fg.CFrame = baseCF * CFrame.new(0, -0.05, -0.85) * CFrame.Angles(math.rad(18), 0, 0)
+                                end
+                            end
+                            applyRemote(userObj.Left, lCF)
+                            applyRemote(userObj.Right, rCF)
+                        end
+                    end
+                end)
+            end)
+        else
+            netStatusLbl.Text = "🟡 VR СЕТЬ: Офлайн (Локально)"
+            netStatusLbl.TextColor3 = Color3.fromRGB(255, 200, 100)
+        end
+    end)
+end
+
+-- // 6. ИНТЕРАКТИВ КАМЕРЫ И ТАПЫ
 UserInputService.InputBegan:Connect(function(input, processed)
     if not VR_ACTIVE then return end
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         local posX = input.Position.X
         if posX > camera.ViewportSize.X * 0.42 and not processed and not EDITING_UI then cameraTouchInput = input end
-        
         if not processed and not EDITING_UI then
             local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
             local localDir = camera.CFrame:VectorToObjectSpace(ray.Direction).Unit
@@ -316,6 +418,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
         end
     end
 end)
+
 UserInputService.InputChanged:Connect(function(input)
     if VR_ACTIVE and input == cameraTouchInput then
         local delta = input.Delta
@@ -325,10 +428,11 @@ UserInputService.InputChanged:Connect(function(input)
         end
     end
 end)
+
 UserInputService.InputEnded:Connect(function(input) if input == cameraTouchInput then cameraTouchInput = nil end end)
 if UserInputService.GyroscopeEnabled then gyroConnection = UserInputService.DeviceRotationChanged:Connect(function(_, rotCFrame) rawGyroCF = rotCFrame end) end
 
--- // 6. ГЛАВНЫЙ ЦИКЛ VR
+-- // 7. ГЛАВНЫЙ ЦИКЛ VR
 local function startVR()
     VR_ACTIVE = true
     camera.CameraType = Enum.CameraType.Scriptable
@@ -337,10 +441,12 @@ local function startVR()
     touchYaw, touchPitch = 0, 0
     camera.FieldOfView = FOV_MODES[FOV_INDEX]
     setupHands()
+    startNetworkSync()
 
     toggleBtn.Text, toggleBtn.TextColor3 = "⏻ ВЫКЛЮЧИТЬ VR", Color3.fromRGB(255, 80, 80)
     cardStroke.Color = Color3.fromRGB(255, 80, 80)
 
+    -- FE Поворот тела
     physicsLoopConnection = RunService.Stepped:Connect(function()
         local char = player.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -354,13 +460,20 @@ local function startVR()
         end
     end)
 
+    -- Рендер
     mainLoopConnection = RunService.RenderStepped:Connect(function(dt)
         local char = player.Character
         if not char then return end
 
+        -- 100% ТОТАЛЬНОЕ СКРЫТИЕ ТЕЛА, АКСЕССУАРОВ И ОДЕЖДЫ ЛОКАЛЬНО
+        local currentTool = char:FindFirstChildOfClass("Tool")
         for _, item in ipairs(char:GetDescendants()) do
-            if item:IsA("BasePart") and not item:IsDescendantOf(char:FindFirstChildOfClass("Tool") or game) then
-                item.LocalTransparencyModifier = 1
+            if item:IsA("BasePart") or item:IsA("Decal") then
+                if currentTool and item:IsDescendantOf(currentTool) then
+                    item.LocalTransparencyModifier = 0
+                else
+                    item.LocalTransparencyModifier = 1
+                end
             end
         end
 
@@ -400,6 +513,8 @@ local function startVR()
         currentHandOffsetL = currentHandOffsetL:Lerp(handDragL + (tapReachL * tapAlphaL), 0.28)
         currentHandOffsetR = currentHandOffsetR:Lerp(handDragR + (tapReachR * tapAlphaR), 0.28)
 
+        local finalLeftCF, finalRightCF = nil, nil
+
         local function updateArm(arm, isL, off, tRot, tAlpha, wPitch, wYaw)
             if not arm then return end
             local side = isL and -1 or 1
@@ -408,6 +523,8 @@ local function startVR()
             local finalAngle = baseAngle:Lerp(tRot, tAlpha*0.8)
 
             local base = camCF * swayCF * CFrame.new(side*(0.65 - (side*bobX)) + off.X, -0.65 + bobY + off.Y, -1.05 + off.Z) * finalAngle
+            if isL then finalLeftCF = base else finalRightCF = base end
+
             local f, c, p, fg = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("Palm"), arm:FindFirstChild("Fingers")
             if f and c and p and fg then
                 f.CFrame, c.CFrame = base * CFrame.new(0, 0, 0.35), base * CFrame.new(0, 0, -0.22)
@@ -418,13 +535,42 @@ local function startVR()
         updateArm(leftArmModel, true, currentHandOffsetL, tapRotL, tapAlphaL, wristPitchL, wristYawL)
         updateArm(rightArmModel, false, currentHandOffsetR, tapRotR, tapAlphaR, wristPitchR, wristYawR)
 
-        local tool = char:FindFirstChildOfClass("Tool")
-        if tool then
+        -- Тулы в руках
+        if currentTool then
             local rightGrip = nil
             for _, v in ipairs(char:GetDescendants()) do if v:IsA("Weld") and v.Name == "RightGrip" then rightGrip = v break end end
             local vrPalm = rightArmModel and rightArmModel:FindFirstChild("Palm")
             if rightGrip and vrPalm then
-                rightGrip.Part0, rightGrip.C0, rightGrip.C1 = vrPalm, CFrame.new(0, -0.1, -0.3) * CFrame.Angles(math.rad(-90), 0, 0), tool.Grip
+                rightGrip.Part0, rightGrip.C0, rightGrip.C1 = vrPalm, CFrame.new(0, 0.1, -0.3), currentTool.Grip
+            end
+        end
+
+        -- ОТПРАВКА СЕТЕВОГО ПАКЕТА MULTIPLAYER (20 Гц)
+        if wsConnection and tick() - lastNetSend > 0.05 and finalLeftCF and finalRightCF then
+            lastNetSend = tick()
+            pcall(function()
+                local lx, ly, lz = finalLeftCF.Position.X, finalLeftCF.Position.Y, finalLeftCF.Position.Z
+                local lrx, lry, lrz = finalLeftCF:ToEulerAnglesXYZ()
+                local rx, ry, rz = finalRightCF.Position.X, finalRightCF.Position.Y, finalRightCF.Position.Z
+                local rrx, rry, rrz = finalRightCF:ToEulerAnglesXYZ()
+
+                local packet = {
+                    userId = player.UserId,
+                    jobId = (game.JobId ~= "" and game.JobId or "LOBBY"),
+                    lPos = {lx, ly, lz},
+                    lRot = {lrx, lry, lrz},
+                    rPos = {rx, ry, rz},
+                    rRot = {rrx, rry, rrz}
+                }
+                wsConnection:Send(HttpService:JSONEncode(packet))
+            end)
+        end
+
+        -- Очистка старых игроков мультиплеера
+        for uId, uData in pairs(remoteVRUsers) do
+            if tick() - uData.LastTick > 4 then
+                if uData.Folder then uData.Folder:Destroy() end
+                remoteVRUsers[uId] = nil
             end
         end
     end)
@@ -432,65 +578,84 @@ end
 
 local function stopVR()
     VR_ACTIVE = false
-    dpadContainer.Visible, handContL.Visible, handContR.Visible = false, false, false
+    dpadContainer.Visible, handContL.Visible, handContR.Visible, interactFrame.Visible = false, false, false, false
     moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
     if mainLoopConnection then mainLoopConnection:Disconnect() mainLoopConnection = nil end
     if physicsLoopConnection then physicsLoopConnection:Disconnect() physicsLoopConnection = nil end
+    if wsConnection then pcall(function() wsConnection:Close() end) wsConnection = nil end
+
+    for _, uData in pairs(remoteVRUsers) do if uData.Folder then uData.Folder:Destroy() end end
+    remoteVRUsers = {}
+
     camera.CameraType, camera.FieldOfView = Enum.CameraType.Custom, 70
     local char = player.Character
     if char then
         if char:FindFirstChildOfClass("Humanoid") then char:FindFirstChildOfClass("Humanoid").AutoRotate = true end
-        for _, item in ipairs(char:GetDescendants()) do if item:IsA("BasePart") then item.LocalTransparencyModifier = 0 end end
+        for _, item in ipairs(char:GetDescendants()) do if item:IsA("BasePart") or item:IsA("Decal") then item.LocalTransparencyModifier = 0 end end
     end
     if viewmodelFolder then viewmodelFolder:Destroy() viewmodelFolder = nil end
     toggleBtn.Text, toggleBtn.TextColor3, cardStroke.Color = "⏻ ВКЛЮЧИТЬ VR", Color3.fromRGB(0, 255, 180), Color3.fromRGB(0, 255, 180)
 end
 
--- // 7. ОБРАБОТЧИКИ МЕНЮ
+-- // 8. ОБРАБОТЧИКИ КНОПОК
 toggleBtn.MouseButton1Click:Connect(function() if VR_ACTIVE then stopVR() else startVR() end end)
+
 modeBtn.MouseButton1Click:Connect(function()
     CONTROL_MODE = (CONTROL_MODE == "TOUCH") and "GYRO" or "TOUCH"
     modeBtn.Text = CONTROL_MODE == "GYRO" and "📱 ПОВОРОТ: ТЕЛЕФОНОМ" or "👆 ПОВОРОТ: ПАЛЬЦЕМ"
     modeBtn.TextColor3 = CONTROL_MODE == "GYRO" and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(255, 180, 0)
     if CONTROL_MODE == "GYRO" then baseGyroCF = rawGyroCF end
 end)
+
 handStyleBtn.MouseButton1Click:Connect(function()
     HAND_STYLE = HAND_STYLE % #STYLES + 1
     handStyleBtn.Text = "🎨 СТИЛЬ: " .. STYLES[HAND_STYLE].Name
     if VR_ACTIVE then setupHands() end
 end)
+
 padModeBtn.MouseButton1Click:Connect(function()
     PAD_MODE = (PAD_MODE == "MOVE") and "ROTATE" or "MOVE"
     padModeBtn.Text = PAD_MODE == "MOVE" and "🖐️ ПАДЫ: ДВИЖЕНИЕ" or "🔄 ПАДЫ: ВРАЩЕНИЕ"
     padModeBtn.TextColor3 = PAD_MODE == "MOVE" and Color3.fromRGB(255, 100, 200) or Color3.fromRGB(200, 255, 100)
 end)
+
 uiEditBtn.MouseButton1Click:Connect(function()
     EDITING_UI = not EDITING_UI
     dpadStroke.Enabled, strokeL.Enabled, strokeR.Enabled = EDITING_UI, EDITING_UI, EDITING_UI
     dpadContainer.DragLbl.Visible, handContL.DragLbl.Visible, handContR.DragLbl.Visible = EDITING_UI, EDITING_UI, EDITING_UI
-    dpadContainer.BackgroundTransparency = EDITING_UI and 0.5 or 1
-    handContL.BackgroundTransparency = EDITING_UI and 0.5 or 1
-    handContR.BackgroundTransparency = EDITING_UI and 0.5 or 1
-    uiEditBtn.Text = EDITING_UI and "💾 СОХРАНИТЬ ИНТЕРФЕЙС" or "📍 РЕДАКТОР ИНТЕРФЕЙСА"
-    uiEditBtn.TextColor3 = EDITING_UI and Color3.fromRGB(0, 255, 140) or Color3.fromRGB(0, 200, 255)
+    dpadContainer.BackgroundTransparency, handContL.BackgroundTransparency, handContR.BackgroundTransparency = EDITING_UI and 0.5 or 1, EDITING_UI and 0.5 or 1, EDITING_UI and 0.5 or 1
+    uiEditBtn.Text, uiEditBtn.TextColor3 = EDITING_UI and "💾 СОХРАНИТЬ ИНТЕРФЕЙС" or "📍 РЕДАКТОР ИНТЕРФЕЙСА", EDITING_UI and Color3.fromRGB(0, 255, 140) or Color3.fromRGB(0, 200, 255)
     if not EDITING_UI then moveForward, moveBackward, moveLeft, moveRight = false, false, false, false end
 end)
+
 crouchBtn.MouseButton1Click:Connect(function()
     IS_CROUCHING = not IS_CROUCHING
     crouchBtn.Text, crouchBtn.TextColor3 = IS_CROUCHING and "🚶 ВСТАТЬ" or "🧎 ПРИСЕСТЬ", IS_CROUCHING and Color3.fromRGB(0, 255, 180) or Color3.fromRGB(180, 220, 255)
 end)
+
 calibBtn.MouseButton1Click:Connect(function()
     if VR_ACTIVE then baseGyroCF, touchYaw, touchPitch, calibBtn.Text = rawGyroCF, 0, 0, "✨ ОК" task.wait(0.4) calibBtn.Text = "🎯 ЦЕНТР КАМЕРЫ" end
 end)
+
 fovBtn.MouseButton1Click:Connect(function()
     FOV_INDEX = FOV_INDEX % #FOV_MODES + 1
     fovBtn.Text = "👁️ FOV: " .. FOV_MODES[FOV_INDEX] .. "°"
     if VR_ACTIVE then TweenService:Create(camera, TweenInfo.new(0.3), {FieldOfView = FOV_MODES[FOV_INDEX]}):Play() end
 end)
+
+-- СВОРАЧИВАНИЕ В ПЛАВАЮЩУЮ СФЕРУ
 minBtn.MouseButton1Click:Connect(function()
-    MINIMIZED = not MINIMIZED
-    mainCard:TweenSize(UDim2.new(0, MINIMIZED and 36 or 340, 0, MINIMIZED and 36 or 220), "Out", "Quad", 0.2, true)
-    for _, ch in ipairs(mainCard:GetChildren()) do if ch:IsA("GuiObject") and ch ~= minBtn and ch ~= cardStroke then ch.Visible = not MINIMIZED end end
-    minBtn.Text, minBtn.Position = MINIMIZED and "VR" or "—", MINIMIZED and UDim2.new(0, 7, 0, 7) or UDim2.new(1, -64, 0, 8)
+    mainCard.Visible = false
+    floatOrb.Visible = true
 end)
-closeBtn.MouseButton1Click:Connect(function() stopVR() if gyroConnection then gyroConnection:Disconnect() end screenGui:Destroy() end)
+
+floatOrb.MouseButton1Click:Connect(function()
+    floatOrb.Visible = false
+    mainCard.Visible = true
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+    stopVR()
+    if gyroConnection then gyroConnection:Disconnect() end
+    screenGui:Destroy()
+end)
