@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v16.0 (D-PAD CONTROLS, GHOST TOOL FIX & AIM-TO-TOUCH)
+-- // 👑 LUXURY VR ENGINE v18.0 ULTRA (PERFECT VECTOR MOVEMENT & ZERO GHOST TOOLS)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -18,8 +18,9 @@ local FOV_INDEX = 2
 local SENS_MULTIPLIER = 1.4
 
 local IS_CROUCHING = false
+local EDITING_DPAD = false
 
--- Переменные ходьбы на кнопках (D-Pad)
+-- Нажатия D-Pad стрелок
 local moveForward = false
 local moveBackward = false
 local moveLeft = false
@@ -36,7 +37,7 @@ local viewmodelFolder = nil
 local leftArmModel, rightArmModel = nil, nil
 
 -- Система оружия / предметов
-local toolVisualFolder = nil
+local toolVisualModel = nil
 local currentToolRef = nil
 local toolPartOffsets = {}
 
@@ -63,7 +64,7 @@ local bobStep = 0
 
 -- // 1. СОЗДАНИЕ UI
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "LuxuryVR_V16_DPad"
+screenGui.Name = "LuxuryVR_V18_Ultra"
 screenGui.ResetOnSpawn = false
 
 local success, _ = pcall(function() screenGui.Parent = CoreGui end)
@@ -71,7 +72,7 @@ if not success then screenGui.Parent = player:WaitForChild("PlayerGui") end
 
 -- Главная панель
 local mainCard = Instance.new("Frame")
-mainCard.Size = UDim2.new(0, 215, 0, 200)
+mainCard.Size = UDim2.new(0, 215, 0, 230)
 mainCard.Position = UDim2.new(0.5, -107, 0.04, 0)
 mainCard.BackgroundColor3 = Color3.fromRGB(12, 14, 20)
 mainCard.BackgroundTransparency = 0.12
@@ -112,20 +113,20 @@ Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
 
 -- Заголовок
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(0.6, 0, 0.12, 0)
+title.Size = UDim2.new(0.6, 0, 0.1, 0)
 title.Position = UDim2.new(0.08, 0, 0.04, 0)
 title.BackgroundTransparency = 1
-title.Text = "👑 VR PRO v16"
+title.Text = "👑 VR ULTRA v18"
 title.TextColor3 = Color3.fromRGB(240, 240, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 11
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Parent = mainCard
 
--- Кнопки
+-- Кнопка 1: ВКЛ / ВЫКЛ
 local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0.88, 0, 0.17, 0)
-toggleBtn.Position = UDim2.new(0.06, 0, 0.18, 0)
+toggleBtn.Size = UDim2.new(0.88, 0, 0.14, 0)
+toggleBtn.Position = UDim2.new(0.06, 0, 0.15, 0)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(22, 24, 32)
 toggleBtn.Text = "⏻ ВКЛЮЧИТЬ VR"
 toggleBtn.TextColor3 = Color3.fromRGB(0, 255, 180)
@@ -134,9 +135,10 @@ toggleBtn.TextSize = 11
 toggleBtn.Parent = mainCard
 Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
 
+-- Кнопка 2: Режим поворота
 local modeBtn = Instance.new("TextButton")
-modeBtn.Size = UDim2.new(0.88, 0, 0.15, 0)
-modeBtn.Position = UDim2.new(0.06, 0, 0.38, 0)
+modeBtn.Size = UDim2.new(0.88, 0, 0.13, 0)
+modeBtn.Position = UDim2.new(0.06, 0, 0.32, 0)
 modeBtn.BackgroundColor3 = Color3.fromRGB(20, 22, 30)
 modeBtn.Text = "👆 ПОВОРОТ: ПАЛЬЦЕМ"
 modeBtn.TextColor3 = Color3.fromRGB(255, 180, 0)
@@ -145,9 +147,10 @@ modeBtn.TextSize = 10
 modeBtn.Parent = mainCard
 Instance.new("UICorner", modeBtn).CornerRadius = UDim.new(0, 8)
 
+-- Кнопка 3: Стиль рук
 local handStyleBtn = Instance.new("TextButton")
-handStyleBtn.Size = UDim2.new(0.88, 0, 0.15, 0)
-handStyleBtn.Position = UDim2.new(0.06, 0, 0.56, 0)
+handStyleBtn.Size = UDim2.new(0.88, 0, 0.13, 0)
+handStyleBtn.Position = UDim2.new(0.06, 0, 0.48, 0)
 handStyleBtn.BackgroundColor3 = Color3.fromRGB(18, 20, 28)
 handStyleBtn.Text = "🎨 СТИЛЬ: ТВОЙ СКИН"
 handStyleBtn.TextColor3 = Color3.fromRGB(240, 180, 255)
@@ -156,9 +159,22 @@ handStyleBtn.TextSize = 10
 handStyleBtn.Parent = mainCard
 Instance.new("UICorner", handStyleBtn).CornerRadius = UDim.new(0, 8)
 
+-- Кнопка 4: Настройка стрелок
+local dpadPosBtn = Instance.new("TextButton")
+dpadPosBtn.Size = UDim2.new(0.88, 0, 0.13, 0)
+dpadPosBtn.Position = UDim2.new(0.06, 0, 0.64, 0)
+dpadPosBtn.BackgroundColor3 = Color3.fromRGB(22, 28, 38)
+dpadPosBtn.Text = "📍 НАСТРОИТЬ СТРЕЛКИ"
+dpadPosBtn.TextColor3 = Color3.fromRGB(0, 200, 255)
+dpadPosBtn.Font = Enum.Font.GothamBold
+dpadPosBtn.TextSize = 10
+dpadPosBtn.Parent = mainCard
+Instance.new("UICorner", dpadPosBtn).CornerRadius = UDim.new(0, 8)
+
+-- Кнопка 5: Присесть
 local crouchBtn = Instance.new("TextButton")
-crouchBtn.Size = UDim2.new(0.42, 0, 0.15, 0)
-crouchBtn.Position = UDim2.new(0.06, 0, 0.74, 0)
+crouchBtn.Size = UDim2.new(0.42, 0, 0.13, 0)
+crouchBtn.Position = UDim2.new(0.06, 0, 0.80, 0)
 crouchBtn.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
 crouchBtn.Text = "🧎 ПРИСЕСТЬ"
 crouchBtn.TextColor3 = Color3.fromRGB(180, 220, 255)
@@ -167,9 +183,10 @@ crouchBtn.TextSize = 9
 crouchBtn.Parent = mainCard
 Instance.new("UICorner", crouchBtn).CornerRadius = UDim.new(0, 8)
 
+-- Кнопка 6: Центровка
 local calibBtn = Instance.new("TextButton")
-calibBtn.Size = UDim2.new(0.42, 0, 0.15, 0)
-calibBtn.Position = UDim2.new(0.52, 0, 0.74, 0)
+calibBtn.Size = UDim2.new(0.42, 0, 0.13, 0)
+calibBtn.Position = UDim2.new(0.52, 0, 0.80, 0)
 calibBtn.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
 calibBtn.Text = "🎯 ЦЕНТР"
 calibBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
@@ -181,14 +198,33 @@ Instance.new("UICorner", calibBtn).CornerRadius = UDim.new(0, 8)
 -- // 2. СТРЕЛОЧКИ ХОДЬБЫ (D-PAD)
 local dpadFrame = Instance.new("Frame")
 dpadFrame.Size = UDim2.new(0, 140, 0, 140)
-dpadFrame.Position = UDim2.new(0, 15, 1, -155)
+dpadFrame.Position = UDim2.new(0, 20, 1, -165)
 dpadFrame.BackgroundTransparency = 1
+dpadFrame.Active = true
+dpadFrame.Draggable = false
 dpadFrame.Visible = false
 dpadFrame.Parent = screenGui
 
+Instance.new("UICorner", dpadFrame).CornerRadius = UDim.new(0, 14)
+local dpadEditStroke = Instance.new("UIStroke", dpadFrame)
+dpadEditStroke.Thickness = 2
+dpadEditStroke.Color = Color3.fromRGB(0, 255, 255)
+dpadEditStroke.Enabled = false
+
+local dpadDragLabel = Instance.new("TextLabel")
+dpadDragLabel.Size = UDim2.new(1, 0, 0, 20)
+dpadDragLabel.Position = UDim2.new(0, 0, -0.18, 0)
+dpadDragLabel.BackgroundTransparency = 1
+dpadDragLabel.Text = "✋ ТАЩИТЕ СЮДА"
+dpadDragLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+dpadDragLabel.Font = Enum.Font.GothamBold
+dpadDragLabel.TextSize = 10
+dpadDragLabel.Visible = false
+dpadDragLabel.Parent = dpadFrame
+
 local function makeDpadButton(symbol, pos, onStateChange)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 42, 0, 42)
+    btn.Size = UDim2.new(0, 44, 0, 44)
     btn.Position = pos
     btn.BackgroundColor3 = Color3.fromRGB(16, 18, 26)
     btn.BackgroundTransparency = 0.2
@@ -204,40 +240,51 @@ local function makeDpadButton(symbol, pos, onStateChange)
     strk.Color = Color3.fromRGB(0, 255, 180)
 
     btn.MouseButton1Down:Connect(function()
-        onStateChange(true)
-        btn.BackgroundColor3 = Color3.fromRGB(0, 255, 180)
-        btn.TextColor3 = Color3.fromRGB(10, 10, 10)
+        if not EDITING_DPAD then
+            onStateChange(true)
+            btn.BackgroundColor3 = Color3.fromRGB(0, 255, 180)
+            btn.TextColor3 = Color3.fromRGB(10, 10, 10)
+        end
     end)
     btn.MouseButton1Up:Connect(function()
-        onStateChange(false)
-        btn.BackgroundColor3 = Color3.fromRGB(16, 18, 26)
-        btn.TextColor3 = Color3.fromRGB(0, 255, 180)
+        if not EDITING_DPAD then
+            onStateChange(false)
+            btn.BackgroundColor3 = Color3.fromRGB(16, 18, 26)
+            btn.TextColor3 = Color3.fromRGB(0, 255, 180)
+        end
     end)
     return btn
 end
 
-makeDpadButton("▲", UDim2.new(0, 49, 0, 0), function(st) moveForward = st end)
-makeDpadButton("▼", UDim2.new(0, 49, 0, 98), function(st) moveBackward = st end)
-makeDpadButton("◄", UDim2.new(0, 0, 0, 49), function(st) moveLeft = st end)
-makeDpadButton("►", UDim2.new(0, 98, 0, 49), function(st) moveRight = st end)
+makeDpadButton("▲", UDim2.new(0, 48, 0, 0), function(st) moveForward = st end)
+makeDpadButton("▼", UDim2.new(0, 48, 0, 96), function(st) moveBackward = st end)
+makeDpadButton("◄", UDim2.new(0, 0, 0, 48), function(st) moveLeft = st end)
+makeDpadButton("►", UDim2.new(0, 96, 0, 48), function(st) moveRight = st end)
 
--- Кнопка Прыжка (рядом с D-Pad)
-local jumpBtn = Instance.new("TextButton")
-jumpBtn.Size = UDim2.new(0, 38, 0, 38)
-jumpBtn.Position = UDim2.new(0, 51, 0, 51)
-jumpBtn.BackgroundColor3 = Color3.fromRGB(24, 26, 36)
-jumpBtn.BackgroundTransparency = 0.2
-jumpBtn.Text = "⤒"
-jumpBtn.TextColor3 = Color3.fromRGB(255, 200, 100)
-jumpBtn.Font = Enum.Font.GothamBold
-jumpBtn.TextSize = 18
-jumpBtn.Parent = dpadFrame
-Instance.new("UICorner", jumpBtn).CornerRadius = UDim.new(0, 8)
+dpadPosBtn.MouseButton1Click:Connect(function()
+    EDITING_DPAD = not EDITING_DPAD
+    if EDITING_DPAD then
+        dpadFrame.Draggable = true
+        dpadFrame.BackgroundTransparency = 0.4
+        dpadFrame.BackgroundColor3 = Color3.fromRGB(15, 25, 35)
+        dpadEditStroke.Enabled = true
+        dpadDragLabel.Visible = true
 
-jumpBtn.MouseButton1Click:Connect(function()
-    local char = player.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then hum.Jump = true end
+        dpadPosBtn.Text = "💾 ПРИМЕНИТЬ"
+        dpadPosBtn.TextColor3 = Color3.fromRGB(0, 255, 140)
+        dpadPosBtn.BackgroundColor3 = Color3.fromRGB(20, 45, 35)
+    else
+        dpadFrame.Draggable = false
+        dpadFrame.BackgroundTransparency = 1
+        dpadEditStroke.Enabled = false
+        dpadDragLabel.Visible = false
+
+        moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
+
+        dpadPosBtn.Text = "📍 НАСТРОИТЬ СТРЕЛКИ"
+        dpadPosBtn.TextColor3 = Color3.fromRGB(0, 200, 255)
+        dpadPosBtn.BackgroundColor3 = Color3.fromRGB(22, 28, 38)
+    end
 end)
 
 -- // 3. БОЛЬШИЕ ДЖОЙСТИКИ РУК
@@ -405,23 +452,16 @@ local function setupHands()
     rightArmModel = buildDetailedArm(false)
 end
 
--- // 5. ПОЛНАЯ ЛИКВИДАЦИЯ ДУБЛИКАТОВ И СИСТЕМА ОРУЖИЯ
-local function clearGhostTools()
-    local char = player.Character
-    if not char then return end
-
-    for _, item in ipairs(char:GetDescendants()) do
-        if item:IsA("BasePart") then
-            item.LocalTransparencyModifier = 1
-        end
-    end
-end
-
+-- // 5. ZERO-GHOST СИСТЕМА ОРУЖИЯ (ПОЛНОЕ УНИЧТОЖЕНИЕ ДУБЛИКАТОВ)
 local function setupToolVisuals(tool)
-    if toolVisualFolder then toolVisualFolder:Destroy() end
-    toolVisualFolder = Instance.new("Folder")
-    toolVisualFolder.Name = "VR_Tool_3D_Visuals"
-    toolVisualFolder.Parent = viewmodelFolder
+    if toolVisualModel then
+        toolVisualModel:Destroy()
+        toolVisualModel = nil
+    end
+
+    toolVisualModel = Instance.new("Model")
+    toolVisualModel.Name = "VR_Active_Tool"
+    toolVisualModel.Parent = viewmodelFolder
 
     toolPartOffsets = {}
     local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart", true)
@@ -444,7 +484,7 @@ local function setupToolVisuals(tool)
             clone.Anchored = true
             clone.CastShadow = false
             clone.Transparency = item.Transparency
-            clone.Parent = toolVisualFolder
+            clone.Parent = toolVisualModel
 
             local relOffset = handle.CFrame:ToObjectSpace(item.CFrame)
             table.insert(toolPartOffsets, {Part = clone, Offset = relOffset})
@@ -466,7 +506,7 @@ local function updateHeldTool()
         local palm = rightArmModel and rightArmModel:FindFirstChild("Palm")
         local handle = currentTool:FindFirstChild("Handle") or currentTool:FindFirstChildWhichIsA("BasePart", true)
         
-        if palm and handle and toolVisualFolder then
+        if palm and handle and toolVisualModel then
             local gripCF = currentTool.Grip
             local targetHandleCF
 
@@ -485,16 +525,16 @@ local function updateHeldTool()
     else
         if currentToolRef then
             currentToolRef = nil
-            if toolVisualFolder then
-                toolVisualFolder:Destroy()
-                toolVisualFolder = nil
+            if toolVisualModel then
+                toolVisualModel:Destroy()
+                toolVisualModel = nil
             end
             toolPartOffsets = {}
         end
     end
 end
 
--- // 6. УПРАВЛЕНИЕ КАМЕРОЙ И AIM-TO-TOUCH
+-- // 6. КАМЕРА И AIM-TO-TOUCH
 UserInputService.InputBegan:Connect(function(input, processed)
     if not VR_ACTIVE then return end
     
@@ -506,10 +546,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
             cameraTouchInput = input
         end
 
-        -- ВЫЧИСЛЯЕМ ТОЧНЫЙ УГОЛ ДОВОРОТА КИСТИ К ТОЧКЕ НАЖАТИЯ
+        -- Точный доворот кисти к точке нажатия
         local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
         local localDir = camera.CFrame:VectorToObjectSpace(ray.Direction).Unit
-        
         local aimRot = CFrame.lookAt(Vector3.zero, localDir)
 
         if posX < screenW * 0.5 then
@@ -548,7 +587,7 @@ if UserInputService.GyroscopeEnabled then
     end)
 end
 
--- // 7. ГЛАВНЫЙ ЦИКЛ VR
+-- // 7. ГЛАВНЫЙ ЦИКЛ VR (ИДЕАЛЬНАЯ ВЕКТОРНАЯ ХОДЬБА 1:1)
 local function startVR()
     VR_ACTIVE = true
     camera.CameraType = Enum.CameraType.Scriptable
@@ -580,40 +619,61 @@ local function startVR()
             local flatLook = Vector3.new(look.X, 0, look.Z)
             if flatLook.Magnitude > 0.05 then
                 local targetBodyCF = CFrame.lookAt(root.Position, root.Position + flatLook.Unit)
-                root.CFrame = root.CFrame:Lerp(targetBodyCF, 0.3)
+                root.CFrame = root.CFrame:Lerp(targetBodyCF, 0.35)
             end
         end
     end)
 
-    -- Рендер
+    -- Биндим скрытие тела на самый высокий приоритет (гарантия 0 дубликатов)
+    RunService:BindToRenderStep("VR_BodyHide", Enum.RenderPriority.Camera.Value + 1, function()
+        local char = player.Character
+        if char then
+            for _, item in ipairs(char:GetDescendants()) do
+                if item:IsA("BasePart") then
+                    item.LocalTransparencyModifier = 1
+                end
+            end
+        end
+    end)
+
+    -- Главный цикл рендера
     mainLoopConnection = RunService.RenderStepped:Connect(function(dt)
         local char = player.Character
         if not char then return end
-
-        clearGhostTools()
 
         local head = char:FindFirstChild("Head")
         local root = char:FindFirstChild("HumanoidRootPart")
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if not head or not root or not humanoid then return end
 
-        -- 1. Движение на стрелочках D-Pad
-        local dX, dZ = 0, 0
-        if moveForward then dZ = dZ + 1 end
-        if moveBackward then dZ = dZ - 1 end
-        if moveLeft then dX = dX - 1 end
-        if moveRight then dX = dX + 1 end
+        -- 1. ИДЕАЛЬНАЯ ВЕКТОРНАЯ ХОДЬБА (100% ТОЧНОСТЬ НАПРАВЛЕНИЯ)
+        if not EDITING_DPAD then
+            local dX, dZ = 0, 0
+            if moveForward then dZ = dZ + 1 end
+            if moveBackward then dZ = dZ - 1 end
+            if moveLeft then dX = dX - 1 end
+            if moveRight then dX = dX + 1 end
 
-        if dX ~= 0 or dZ ~= 0 then
-            local camLook = camera.CFrame.LookVector
-            local camRight = camera.CFrame.RightVector
-            local flatFwd = Vector3.new(camLook.X, 0, camLook.Z).Unit
-            local flatRt = Vector3.new(camRight.X, 0, camRight.Z).Unit
-            local moveDir = (flatRt * dX + flatFwd * dZ).Unit
-            humanoid:Move(moveDir, false)
-        else
-            if moveForward == false and moveBackward == false and moveLeft == false and moveRight == false then
-                humanoid:Move(Vector3.zero, false)
+            if dX ~= 0 or dZ ~= 0 then
+                -- Вычисляем чистый вектор горизонтали от взгляда камеры
+                local camLook = camera.CFrame.LookVector
+                local flatFwd = Vector3.new(camLook.X, 0, camLook.Z)
+                if flatFwd.Magnitude < 0.001 then
+                    flatFwd = Vector3.new(0, 0, -1)
+                else
+                    flatFwd = flatFwd.Unit
+                end
+
+                -- Вектор вправо (перпендикуляр)
+                local flatRt = Vector3.new(-flatFwd.Z, 0, flatFwd.X).Unit
+
+                -- Итоговое мировое направление
+                local finalMoveDir = (flatRt * dX + flatFwd * dZ).Unit
+                humanoid:Move(finalMoveDir, false)
+            else
+                if not moveForward and not moveBackward and not moveLeft and not moveRight then
+                    humanoid:Move(Vector3.zero, false)
+                end
             end
         end
 
@@ -656,7 +716,7 @@ local function startVR()
         tapAlphaL = math.clamp(tapAlphaL - dt * 4, 0, 1)
         tapAlphaR = math.clamp(tapAlphaR - dt * 4, 0, 1)
 
-        -- 6. Позиции и разворот кистей (Aim-to-Touch)
+        -- 6. Позиции и доворот кистей (Aim-to-Touch)
         currentHandOffsetL = currentHandOffsetL:Lerp(handDragL + (tapReachL * tapAlphaL), 0.28)
         currentHandOffsetR = currentHandOffsetR:Lerp(handDragR + (tapReachR * tapAlphaR), 0.28)
 
@@ -671,7 +731,6 @@ local function startVR()
                 math.rad(side * 4)
             )
 
-            -- Плавный переход от дефолтного угла к направленному по лучу тапа
             local finalHandRot = defaultAngle:Lerp(tapRot, tapAlpha * 0.8)
 
             local base = camCF * swayCF 
@@ -711,6 +770,8 @@ local function stopVR()
 
     moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
 
+    pcall(function() RunService:UnbindFromRenderStep("VR_BodyHide") end)
+
     if mainLoopConnection then mainLoopConnection:Disconnect() mainLoopConnection = nil end
     if physicsLoopConnection then physicsLoopConnection:Disconnect() physicsLoopConnection = nil end
 
@@ -731,7 +792,7 @@ local function stopVR()
 
     if viewmodelFolder then viewmodelFolder:Destroy() viewmodelFolder = nil end
     currentToolRef = nil
-    toolVisualFolder = nil
+    if toolVisualModel then toolVisualModel:Destroy() toolVisualModel = nil end
     toolPartOffsets = {}
 
     toggleBtn.Text = "⏻ ВКЛЮЧИТЬ VR"
@@ -806,7 +867,7 @@ minBtn.MouseButton1Click:Connect(function()
         minBtn.Text = "VR"
         minBtn.Position = UDim2.new(0, 7, 0, 7)
     else
-        mainCard:TweenSize(UDim2.new(0, 215, 0, 200), "Out", "Quad", 0.2, true)
+        mainCard:TweenSize(UDim2.new(0, 215, 0, 230), "Out", "Quad", 0.2, true)
         task.wait(0.15)
         for _, ch in ipairs(mainCard:GetChildren()) do
             if ch:IsA("GuiObject") and ch ~= minBtn and ch ~= cardStroke then
