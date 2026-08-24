@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v38.0 OMEGA (DYNAMIC WALK LIFT, 10 SKINS, 2-HAND GRIP & PRIVATE WS)
+-- // 👑 LUXURY VR ENGINE v39.0 OMEGA (BODY-ANCHORED MULTIPLAYER & LUXURY GLOW)
 
 -- ==============================================================================
 -- 🚀 ТВОЙ ЛИЧНЫЙ ПРИВАТНЫЙ WEBSOCKET СЕРВЕР:
@@ -17,7 +17,7 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 -- // 1. ОЧИСТКА ПРЕДЫДУЩИХ ВЕРСИЙ
-local GUI_NAME = "LuxuryVR_V38_Omega"
+local GUI_NAME = "LuxuryVR_V39_Omega"
 pcall(function()
     if CoreGui:FindFirstChild(GUI_NAME) then CoreGui[GUI_NAME]:Destroy() end
     if player.PlayerGui:FindFirstChild(GUI_NAME) then player.PlayerGui[GUI_NAME]:Destroy() end
@@ -59,18 +59,18 @@ local netAttemptId = 0
 local remoteVRUsers = {}
 local lastNetSend = 0
 
--- // 10 УНИКАЛЬНЫХ СТИЛЕЙ РУК
+-- // 10 ЛАКШЕРИ СТИЛЕЙ РУК С НЕОНОВЫМ СВЕЧЕНИЕМ
 local STYLES = {
-    {Name = "ТВОЙ СКИН", Col = nil, Cuff = Color3.fromRGB(0, 255, 180), Mat = Enum.Material.SmoothPlastic},
-    {Name = "НЕОН КИБЕР", Col = Color3.fromRGB(15, 20, 28), Cuff = Color3.fromRGB(0, 240, 255), Mat = Enum.Material.Neon},
-    {Name = "СТЕЛС КОМБАТ", Col = Color3.fromRGB(28, 28, 32), Cuff = Color3.fromRGB(255, 45, 45), Mat = Enum.Material.SmoothPlastic},
-    {Name = "ЧИСТОЕ ЗОЛОТО", Col = Color3.fromRGB(255, 205, 50), Cuff = Color3.fromRGB(255, 255, 255), Mat = Enum.Material.Foil},
-    {Name = "ХРОМ МЕХА", Col = Color3.fromRGB(165, 170, 180), Cuff = Color3.fromRGB(255, 125, 0), Mat = Enum.Material.Metal},
-    {Name = "ПЛАЗМА ФИОЛЕТ", Col = Color3.fromRGB(45, 15, 65), Cuff = Color3.fromRGB(220, 0, 255), Mat = Enum.Material.Neon},
-    {Name = "ЛАВА ВУЛКАН", Col = Color3.fromRGB(25, 18, 18), Cuff = Color3.fromRGB(255, 75, 0), Mat = Enum.Material.Neon},
-    {Name = "ТОКСИК КИСЛОТА", Col = Color3.fromRGB(20, 30, 20), Cuff = Color3.fromRGB(50, 255, 50), Mat = Enum.Material.Neon},
-    {Name = "ГАЛАКТИКА", Col = Color3.fromRGB(10, 12, 35), Cuff = Color3.fromRGB(120, 100, 255), Mat = Enum.Material.ForceField},
-    {Name = "АЛМАЗНЫЙ ЛЕД", Col = Color3.fromRGB(175, 225, 255), Cuff = Color3.fromRGB(255, 255, 255), Mat = Enum.Material.Glass}
+    {Name = "ТВОЙ СКИН", Col = nil, Cuff = Color3.fromRGB(0, 255, 180), Mat = Enum.Material.SmoothPlastic, Light = Color3.fromRGB(0, 255, 180)},
+    {Name = "НЕОН КИБЕР", Col = Color3.fromRGB(15, 20, 28), Cuff = Color3.fromRGB(0, 240, 255), Mat = Enum.Material.Neon, Light = Color3.fromRGB(0, 240, 255)},
+    {Name = "СТЕЛС КОМБАТ", Col = Color3.fromRGB(28, 28, 32), Cuff = Color3.fromRGB(255, 45, 45), Mat = Enum.Material.SmoothPlastic, Light = Color3.fromRGB(255, 45, 45)},
+    {Name = "ЧИСТОЕ ЗОЛОТО", Col = Color3.fromRGB(255, 205, 50), Cuff = Color3.fromRGB(255, 255, 255), Mat = Enum.Material.Foil, Light = Color3.fromRGB(255, 220, 100)},
+    {Name = "ХРОМ МЕХА", Col = Color3.fromRGB(165, 170, 180), Cuff = Color3.fromRGB(255, 125, 0), Mat = Enum.Material.Metal, Light = Color3.fromRGB(255, 125, 0)},
+    {Name = "ПЛАЗМА ФИОЛЕТ", Col = Color3.fromRGB(45, 15, 65), Cuff = Color3.fromRGB(220, 0, 255), Mat = Enum.Material.Neon, Light = Color3.fromRGB(220, 0, 255)},
+    {Name = "ЛАВА ВУЛКАН", Col = Color3.fromRGB(25, 18, 18), Cuff = Color3.fromRGB(255, 75, 0), Mat = Enum.Material.Neon, Light = Color3.fromRGB(255, 75, 0)},
+    {Name = "ТОКСИК КИСЛОТА", Col = Color3.fromRGB(20, 30, 20), Cuff = Color3.fromRGB(50, 255, 50), Mat = Enum.Material.Neon, Light = Color3.fromRGB(50, 255, 50)},
+    {Name = "ГАЛАКТИКА", Col = Color3.fromRGB(10, 12, 35), Cuff = Color3.fromRGB(120, 100, 255), Mat = Enum.Material.ForceField, Light = Color3.fromRGB(120, 100, 255)},
+    {Name = "АЛМАЗНЫЙ ЛЕД", Col = Color3.fromRGB(175, 225, 255), Cuff = Color3.fromRGB(255, 255, 255), Mat = Enum.Material.Glass, Light = Color3.fromRGB(180, 240, 255)}
 }
 
 -- // 3. ГЛАВНЫЙ ИНТЕРФЕЙС
@@ -140,7 +140,7 @@ makeFreeDraggable(mainCard, header)
 
 local title = Instance.new("TextLabel", header)
 title.Size, title.Position = UDim2.new(1, -70, 0, 20), UDim2.new(0, 14, 0, 4)
-title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v38 OMEGA"
+title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v39 (MASTER HUB)"
 title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -162,7 +162,7 @@ minBtn.BackgroundColor3, minBtn.TextColor3, minBtn.Text = Color3.fromRGB(20, 24,
 minBtn.Font, minBtn.TextSize = Enum.Font.GothamBold, 11
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
 
--- МИНИ СФЕРА СВОРАЧИВАНИЯ
+-- МИНИ СФЕРА
 local floatOrb = Instance.new("TextButton", screenGui)
 floatOrb.Size, floatOrb.Position = UDim2.new(0, 50, 0, 50), UDim2.new(0.5, -25, 0.05, 0)
 floatOrb.BackgroundColor3, floatOrb.TextColor3, floatOrb.Text = Color3.fromRGB(10, 14, 20), Color3.fromRGB(0, 255, 180), "👑\nVR"
@@ -302,12 +302,13 @@ end
 buildHandPad(handContL, true)
 buildHandPad(handContR, false)
 
--- // 5. АНАТОМИЯ РУК
+-- // 5. АНАТОМИЯ РУК С ЛАКШЕРИ ПОДСВЕТКОЙ
 local function applyStyleToModel(model, styleIndex, targetPlayer)
     local st = STYLES[styleIndex or 1]
     local baseCol = st.Col
     local cuffCol = st.Cuff
     local mat = st.Mat
+    local lightCol = st.Light or cuffCol
 
     if styleIndex == 1 then
         local targetChar = targetPlayer and targetPlayer.Character or player.Character
@@ -320,6 +321,8 @@ local function applyStyleToModel(model, styleIndex, targetPlayer)
             if p.Name == "Cuff" then
                 p.Color = cuffCol
                 p.Material = Enum.Material.Neon
+                local light = p:FindFirstChildOfClass("PointLight")
+                if light then light.Color = lightCol end
             else
                 p.Color = baseCol or Color3.fromRGB(225, 185, 145)
                 p.Material = mat
@@ -341,10 +344,16 @@ local function buildArm(isLeft, targetFolder, customStyle, targetPlayer)
     end
 
     mk("Forearm", Vector3.new(0.52, 0.42, 1.05))
-    mk("Cuff", Vector3.new(0.56, 0.46, 0.12))
+    local cuff = mk("Cuff", Vector3.new(0.56, 0.46, 0.14))
     mk("Palm", Vector3.new(0.48, 0.30, 0.52))
     mk("Fingers", Vector3.new(0.44, 0.20, 0.32))
     mk("Thumb", Vector3.new(0.16, 0.20, 0.26))
+
+    -- Премиум подсветка кистей
+    local ptLight = Instance.new("PointLight", cuff)
+    ptLight.Range = 4.5
+    ptLight.Brightness = 1.4
+    ptLight.Shadows = false
 
     applyStyleToModel(m, customStyle or HAND_STYLE, targetPlayer or player)
     m.Parent = targetFolder or viewmodelFolder
@@ -359,7 +368,7 @@ local function setupHands()
     leftArmModel, rightArmModel = buildArm(true), buildArm(false)
 end
 
--- // 6. СЕТЕВОЙ МОДУЛЬ
+-- // 6. СЕТЕВОЙ МОДУЛЬ (BODY-ROOT SYNC)
 local function getWebSocketFunc()
     if syn and type(syn.websocket) == "table" and type(syn.websocket.connect) == "function" then
         return syn.websocket.connect
@@ -403,13 +412,13 @@ local function startNetworkSync()
                 return
             end
 
-            netStatus.Text = "🟢 VR: Активен | 🟡 Подключение к PieSocket..."
+            netStatus.Text = "🟢 VR: Активен | 🟡 Подключение к серверу..."
             netStatus.TextColor3 = Color3.fromRGB(255, 215, 0)
 
             local ok, ws = pcall(function() return wsConnect(MY_PRIVATE_WS_URL) end)
             if ok and ws and thisAttempt == netAttemptId and VR_ACTIVE and NETWORK_ENABLED then
                 wsConnection = ws
-                netStatus.Text = "🟢 VR: Активен | 🟢 ПРИВАТНЫЙ СОКЕТ: Онлайн"
+                netStatus.Text = "🟢 VR: Активен | 🟢 VR СЕТЬ: Онлайн"
                 netStatus.TextColor3 = Color3.fromRGB(0, 255, 180)
 
                 heartbeatThread = task.spawn(function()
@@ -422,9 +431,9 @@ local function startNetworkSync()
                 wsConnection.OnMessage:Connect(function(msg)
                     pcall(function()
                         local data = HttpService:JSONDecode(msg)
-                        if type(data) == "table" and data.s == "VR38" and data.u ~= player.UserId and data.j == (game.JobId ~= "" and game.JobId or "LOBBY") then
+                        if type(data) == "table" and data.s == "VR39" and data.u ~= player.UserId then
                             local remotePlr = Players:GetPlayerByUserId(data.u)
-                            if remotePlr and remotePlr.Character then
+                            if remotePlr and remotePlr.Character and remotePlr.Character:FindFirstChild("HumanoidRootPart") then
                                 if not remoteVRUsers[data.u] then
                                     local rFolder = Instance.new("Folder", workspace)
                                     rFolder.Name = "RemoteVR_" .. data.u
@@ -433,6 +442,10 @@ local function startNetworkSync()
                                         Left = buildArm(true, rFolder, data.st, remotePlr),
                                         Right = buildArm(false, rFolder, data.st, remotePlr),
                                         Style = data.st,
+                                        TargetL = CFrame.identity,
+                                        TargetR = CFrame.identity,
+                                        CurrentL = CFrame.identity,
+                                        CurrentR = CFrame.identity,
                                         LastTick = tick()
                                     }
                                 end
@@ -447,22 +460,13 @@ local function startNetworkSync()
                                 end
 
                                 if data.lp and data.lr and data.rp and data.rr then
-                                    local lCF = CFrame.new(unpack(data.lp)) * CFrame.Angles(unpack(data.lr))
-                                    local rCF = CFrame.new(unpack(data.rp)) * CFrame.Angles(unpack(data.rr))
+                                    local rootCF = remotePlr.Character.HumanoidRootPart.CFrame
+                                    local localLCF = CFrame.new(unpack(data.lp)) * CFrame.Angles(unpack(data.lr))
+                                    local localRCF = CFrame.new(unpack(data.rp)) * CFrame.Angles(unpack(data.rr))
 
-                                    local function applyRemote(arm, isL, baseCF)
-                                        local f, c, p, fg, th = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("Palm"), arm:FindFirstChild("Fingers"), arm:FindFirstChild("Thumb")
-                                        local side = isL and -1 or 1
-                                        if f and c and p and fg then
-                                            f.CFrame = baseCF * CFrame.new(0, -0.02, 0.40)
-                                            c.CFrame = baseCF * CFrame.new(0, -0.01, -0.08)
-                                            p.CFrame = baseCF * CFrame.new(0, 0, -0.32)
-                                            fg.CFrame = baseCF * CFrame.new(0, -0.03, -0.62) * CFrame.Angles(math.rad(-10), 0, 0)
-                                            if th then th.CFrame = baseCF * CFrame.new(side * 0.22, -0.02, -0.30) * CFrame.Angles(0, math.rad(side * 28), math.rad(side * 10)) end
-                                        end
-                                    end
-                                    applyRemote(u.Left, true, lCF)
-                                    applyRemote(u.Right, false, rCF)
+                                    -- Руки привязываются к телу персонажа в мире
+                                    u.TargetL = rootCF * localLCF
+                                    u.TargetR = rootCF * localRCF
                                 end
                             end
                         end
@@ -520,7 +524,7 @@ if UserInputService.GyroscopeEnabled then
     gyroConnection = UserInputService.DeviceRotationChanged:Connect(function(_, rotCFrame) rawGyroCF = rotCFrame end)
 end
 
--- // 8. ГЛАВНЫЙ ЦИКЛ РЕНДЕРА (С ДИНАМИЧЕСКИМ ПОДЪЕМОМ КАМЕРЫ)
+-- // 8. ГЛАВНЫЙ ЦИКЛ РЕНДЕРА
 local function startVR()
     VR_ACTIVE = true
     camera.CameraType = Enum.CameraType.Scriptable
@@ -561,7 +565,7 @@ local function startVR()
             local head = char:FindFirstChild("Head")
             if not head or not root or not humanoid then return end
 
-            -- 100% скрытие тела локально
+            -- Скрытие тела
             local currentTool = char:FindFirstChildOfClass("Tool")
             for _, item in ipairs(char:GetDescendants()) do
                 if item:IsA("BasePart") or item:IsA("Decal") then
@@ -586,7 +590,7 @@ local function startVR()
                 end
             end
 
-            -- Вращение камеры
+            -- Камера
             local targetRot
             if CONTROL_MODE == "GYRO" then
                 local rx, ry, rz = baseGyroCF:ToObjectSpace(rawGyroCF):ToEulerAnglesYXZ()
@@ -597,12 +601,11 @@ local function startVR()
 
             smoothedCamRot = smoothedCamRot:Lerp(targetRot, 0.4)
 
-            -- 🚶 ФИЗИКА ШАГОВ И ПОДЪЕМ КАМЕРЫ (DYNAMIC WALK LIFT)
+            -- Физика шагов и подъем камеры
             local isMoving = root.AssemblyLinearVelocity.Magnitude > 1.5
             bobStep = bobStep + dt * (isMoving and 8.5 or 2.2)
             local bobX, bobY = math.sin(bobStep) * 0.018, math.cos(bobStep * 2) * 0.012
 
-            -- Подъем камеры на шаге (Head Bobbing) и естественный наклон тела
             local camWalkLift = isMoving and (math.abs(math.sin(bobStep)) * 0.12) or 0
             local camTiltRoll = isMoving and (math.sin(bobStep) * 0.014) or 0
             local headBaseHeight = IS_CROUCHING and -1.4 or 0.25
@@ -613,7 +616,7 @@ local function startVR()
                 
             local camCF = camera.CFrame
 
-            -- Физика инерции рук (Sway)
+            -- Инерция рук
             local dRot = camCF:ToObjectSpace(lastCamCF)
             swayCF = swayCF:Lerp(CFrame.Angles(math.clamp(dRot.X * 0.4, -0.08, 0.08), math.clamp(dRot.Y * 0.4, -0.08, 0.08), 0), 0.25)
             lastCamCF = camCF
@@ -649,7 +652,7 @@ local function startVR()
             updateArm(leftArmModel, true, currentHandOffsetL, tapRotL, tapAlphaL, wristPitchL, wristYawL)
             updateArm(rightArmModel, false, currentHandOffsetR, tapRotR, tapAlphaR, wristPitchR, wristYawR)
 
-            -- ДВУРУЧНЫЙ ХВАТ И КРУЧЕНИЕ ОРУЖИЯ
+            -- Двуручный хват
             if currentTool then
                 local rightGrip = nil
                 for _, v in ipairs(char:GetDescendants()) do if v:IsA("Weld") and v.Name == "RightGrip" then rightGrip = v break end end
@@ -671,29 +674,50 @@ local function startVR()
                 end
             end
 
-            -- Отправка пакетов в приватный сокет (20 FPS)
+            -- Отправка относительных координат (Body-Root Space)
             if NETWORK_ENABLED and wsConnection and tick() - lastNetSend > 0.05 and finalLeftCF and finalRightCF then
                 lastNetSend = tick()
                 pcall(function()
+                    local rootCF = root.CFrame
+                    local relL = rootCF:ToObjectSpace(finalLeftCF)
+                    local relR = rootCF:ToObjectSpace(finalRightCF)
+
                     local packet = {
-                        s = "VR38",
+                        s = "VR39",
                         u = player.UserId,
-                        j = (game.JobId ~= "" and game.JobId or "LOBBY"),
                         st = HAND_STYLE,
-                        lp = {finalLeftCF.Position.X, finalLeftCF.Position.Y, finalLeftCF.Position.Z},
-                        lr = {finalLeftCF:ToEulerAnglesXYZ()},
-                        rp = {finalRightCF.Position.X, finalRightCF.Position.Y, finalRightCF.Position.Z},
-                        rr = {finalRightCF:ToEulerAnglesXYZ()}
+                        lp = {relL.Position.X, relL.Position.Y, relL.Position.Z},
+                        lr = {relL:ToEulerAnglesXYZ()},
+                        rp = {relR.Position.X, relR.Position.Y, relR.Position.Z},
+                        rr = {relR:ToEulerAnglesXYZ()}
                     }
                     wsConnection:Send(HttpService:JSONEncode(packet))
                 end)
             end
 
-            -- Очистка оффлайн игроков
+            -- Плавная интерполяция 60 FPS для чужих рук
             for uId, uData in pairs(remoteVRUsers) do
                 if tick() - uData.LastTick > 4 then
                     if uData.Folder then uData.Folder:Destroy() end
                     remoteVRUsers[uId] = nil
+                else
+                    uData.CurrentL = uData.CurrentL:Lerp(uData.TargetL, 0.35)
+                    uData.CurrentR = uData.CurrentR:Lerp(uData.TargetR, 0.35)
+
+                    local function applyRemotePart(arm, isL, baseCF)
+                        local f, c, p, fg, th = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("Palm"), arm:FindFirstChild("Fingers"), arm:FindFirstChild("Thumb")
+                        local side = isL and -1 or 1
+                        if f and c and p and fg then
+                            f.CFrame = baseCF * CFrame.new(0, -0.02, 0.40)
+                            c.CFrame = baseCF * CFrame.new(0, -0.01, -0.08)
+                            p.CFrame = baseCF * CFrame.new(0, 0, -0.32)
+                            fg.CFrame = baseCF * CFrame.new(0, -0.03, -0.62) * CFrame.Angles(math.rad(-10), 0, 0)
+                            if th then th.CFrame = baseCF * CFrame.new(side * 0.22, -0.02, -0.30) * CFrame.Angles(0, math.rad(side * 28), math.rad(side * 10)) end
+                        end
+                    end
+
+                    applyRemotePart(uData.Left, true, uData.CurrentL)
+                    applyRemotePart(uData.Right, false, uData.CurrentR)
                 end
             end
         end)
