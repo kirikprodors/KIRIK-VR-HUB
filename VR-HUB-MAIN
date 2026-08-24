@@ -1,278 +1,293 @@
--- // 👑 LUXURY VR ENGINE v20.0 GOD TIER (FLAWLESS MOVEMENT, WRIST ROTATION & ZERO GHOSTS)
+-- // 👑 LUXURY VR ENGINE v21.0 OMEGA (CUSTOM UI, PROXIMITY FIX, 6 SKINS & SAVED ROTATION)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local CoreGui = game:GetService("CoreGui")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
--- Настройки
+-- // НАСТРОЙКИ ЯДРА
 local VR_ACTIVE = false
 local MINIMIZED = false
 local CONTROL_MODE = "TOUCH"
+local PAD_MODE = "MOVE"
 local HAND_STYLE = 1
-local PAD_MODE = "MOVE" -- "MOVE" или "ROTATE"
 local FOV_MODES = {70, 90, 110}
 local FOV_INDEX = 2
 local SENS_MULTIPLIER = 1.4
 local IS_CROUCHING = false
-local EDITING_DPAD = false
+local EDITING_UI = false
 
--- Ввод
+-- Ввод и физика
 local moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
 local touchYaw, touchPitch = 0, 0
 local cameraTouchInput = nil
-local rawGyroCF = CFrame.identity
-local baseGyroCF = CFrame.identity
-local smoothedCamRot = CFrame.identity
+local rawGyroCF, baseGyroCF, smoothedCamRot = CFrame.identity, CFrame.identity, CFrame.identity
 
-local viewmodelFolder = nil
-local leftArmModel, rightArmModel = nil, nil
+local viewmodelFolder, leftArmModel, rightArmModel = nil, nil, nil
 local mainLoopConnection, physicsLoopConnection, gyroConnection = nil, nil, nil
 
--- Интерактив рук
 local handDragL, handDragR = Vector3.zero, Vector3.zero
 local currentHandOffsetL, currentHandOffsetR = Vector3.zero, Vector3.zero
-
--- Вращение кистей (Wrist Rotation)
-local wristPitchL, wristYawL = 0, 0
-local wristPitchR, wristYawR = 0, 0
-
+local wristPitchL, wristYawL, wristPitchR, wristYawR = 0, 0, 0, 0
 local tapReachL, tapReachR = Vector3.zero, Vector3.zero
 local tapRotL, tapRotR = CFrame.identity, CFrame.identity
 local tapAlphaL, tapAlphaR = 0, 0
+local swayCF, lastCamCF, bobStep = CFrame.identity, camera.CFrame, 0
 
-local swayCF = CFrame.identity
-local lastCamCF = camera.CFrame
-local bobStep = 0
+-- // СТИЛИ РУК
+local STYLES = {
+    {Name = "ТВОЙ СКИН", Col = nil, Cuff = Color3.fromRGB(0, 255, 180), Mat = Enum.Material.SmoothPlastic},
+    {Name = "НЕОН КИБЕР", Col = Color3.fromRGB(20, 22, 28), Cuff = Color3.fromRGB(0, 230, 255), Mat = Enum.Material.Neon},
+    {Name = "СТЕЛС КОМБАТ", Col = Color3.fromRGB(35, 35, 40), Cuff = Color3.fromRGB(255, 60, 60), Mat = Enum.Material.SmoothPlastic},
+    {Name = "ЧИСТОЕ ЗОЛОТО", Col = Color3.fromRGB(255, 200, 50), Cuff = Color3.fromRGB(255, 255, 255), Mat = Enum.Material.Foil},
+    {Name = "ЗОМБИ", Col = Color3.fromRGB(80, 120, 70), Cuff = Color3.fromRGB(40, 40, 40), Mat = Enum.Material.CorrodedMetal},
+    {Name = "МЕХА РОБОТ", Col = Color3.fromRGB(150, 150, 160), Cuff = Color3.fromRGB(255, 100, 0), Mat = Enum.Material.Metal}
+}
 
--- // 1. UI: ГЛАВНАЯ ПАНЕЛЬ
+-- // 1. ГЛАВНЫЙ ИНТЕРФЕЙС (ХАБ)
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "LuxuryVR_V20_GodTier"
+screenGui.Name = "LuxuryVR_V21_Omega"
 screenGui.ResetOnSpawn = false
 pcall(function() screenGui.Parent = CoreGui end)
 if not screenGui.Parent then screenGui.Parent = player:WaitForChild("PlayerGui") end
 
+-- Функция перетаскивания (Драг)
+local function makeDraggable(frame, triggerFrame)
+    local dragToggle, dragStart, startPos = false, nil, nil
+    (triggerFrame or frame).InputBegan:Connect(function(input)
+        if EDITING_UI and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) then
+            dragToggle = true
+            dragStart = input.Position
+            startPos = frame.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragToggle and EDITING_UI and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then dragToggle = false end
+    end)
+end
+
+-- ХАБ
 local mainCard = Instance.new("Frame")
-mainCard.Size = UDim2.new(0, 215, 0, 260)
-mainCard.Position = UDim2.new(0.5, -107, 0.04, 0)
+mainCard.Size = UDim2.new(0, 340, 0, 220)
+mainCard.Position = UDim2.new(0.5, -170, 0.04, 0)
 mainCard.BackgroundColor3 = Color3.fromRGB(12, 14, 20)
-mainCard.BackgroundTransparency = 0.12
+mainCard.BackgroundTransparency = 0.1
 mainCard.BorderSizePixel = 0
 mainCard.Active = true
-mainCard.Draggable = true
 mainCard.Parent = screenGui
 Instance.new("UICorner", mainCard).CornerRadius = UDim.new(0, 16)
 local cardStroke = Instance.new("UIStroke", mainCard)
 cardStroke.Thickness = 1.5
 cardStroke.Color = Color3.fromRGB(0, 255, 180)
 cardStroke.Transparency = 0.3
-
-local function makeMenuBtn(text, pos, color, txtColor, sizeY)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.88, 0, sizeY or 0.11, 0)
-    btn.Position = pos
-    btn.BackgroundColor3 = color
-    btn.Text = text
-    btn.TextColor3 = txtColor
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 10
-    btn.Parent = mainCard
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-    return btn
-end
+makeDraggable(mainCard, mainCard)
 
 local title = Instance.new("TextLabel", mainCard)
-title.Size = UDim2.new(0.6, 0, 0.1, 0)
-title.Position = UDim2.new(0.08, 0, 0.03, 0)
-title.BackgroundTransparency = 1
-title.Text = "👑 VR GOD TIER v20"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 12
+title.Size, title.Position = UDim2.new(1, -60, 0, 30), UDim2.new(0, 15, 0, 5)
+title.BackgroundTransparency, title.Text = 1, "👑 VR PRO MAX OMEGA"
+title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 
 local closeBtn = Instance.new("TextButton", mainCard)
-closeBtn.Size, closeBtn.Position = UDim2.new(0, 22, 0, 22), UDim2.new(1, -28, 0, 6)
+closeBtn.Size, closeBtn.Position = UDim2.new(0, 24, 0, 24), UDim2.new(1, -34, 0, 8)
 closeBtn.BackgroundColor3, closeBtn.TextColor3 = Color3.fromRGB(40, 20, 25), Color3.fromRGB(255, 75, 75)
 closeBtn.Text, closeBtn.Font, closeBtn.TextSize = "✕", Enum.Font.GothamBold, 11
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
 
 local minBtn = Instance.new("TextButton", mainCard)
-minBtn.Size, minBtn.Position = UDim2.new(0, 22, 0, 22), UDim2.new(1, -54, 0, 6)
+minBtn.Size, minBtn.Position = UDim2.new(0, 24, 0, 24), UDim2.new(1, -64, 0, 8)
 minBtn.BackgroundColor3, minBtn.TextColor3 = Color3.fromRGB(25, 25, 35), Color3.fromRGB(200, 200, 220)
 minBtn.Text, minBtn.Font, minBtn.TextSize = "—", Enum.Font.GothamBold, 11
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
 
-local toggleBtn = makeMenuBtn("⏻ ВКЛЮЧИТЬ VR", UDim2.new(0.06, 0, 0.14, 0), Color3.fromRGB(22, 24, 32), Color3.fromRGB(0, 255, 180), 0.12)
-local modeBtn = makeMenuBtn("👆 ПОВОРОТ: ПАЛЬЦЕМ", UDim2.new(0.06, 0, 0.28, 0), Color3.fromRGB(20, 22, 30), Color3.fromRGB(255, 180, 0))
-local handStyleBtn = makeMenuBtn("🎨 СТИЛЬ: ТВОЙ СКИН", UDim2.new(0.06, 0, 0.41, 0), Color3.fromRGB(18, 20, 28), Color3.fromRGB(240, 180, 255))
-local padModeBtn = makeMenuBtn("🖐️ ПАДЫ: ДВИЖЕНИЕ", UDim2.new(0.06, 0, 0.54, 0), Color3.fromRGB(30, 20, 40), Color3.fromRGB(255, 100, 200))
-local dpadPosBtn = makeMenuBtn("📍 НАСТРОИТЬ СТРЕЛКИ", UDim2.new(0.06, 0, 0.67, 0), Color3.fromRGB(22, 28, 38), Color3.fromRGB(0, 200, 255))
-
-local crouchBtn = makeMenuBtn("🧎 ПРИСЕСТЬ", UDim2.new(0.06, 0, 0.82, 0), Color3.fromRGB(18, 20, 26), Color3.fromRGB(180, 220, 255))
-crouchBtn.Size = UDim2.new(0.42, 0, 0.12, 0)
-local calibBtn = makeMenuBtn("🎯 ЦЕНТР", UDim2.new(0.52, 0, 0.82, 0), Color3.fromRGB(18, 20, 26), Color3.fromRGB(200, 200, 220))
-calibBtn.Size = UDim2.new(0.42, 0, 0.12, 0)
-
--- // 2. КАСТОМНЫЙ D-PAD С ПЕРЕТАСКИВАНИЕМ
-local dpadFrame = Instance.new("Frame", screenGui)
-dpadFrame.Size, dpadFrame.Position = UDim2.new(0, 140, 0, 140), UDim2.new(0, 20, 1, -165)
-dpadFrame.BackgroundTransparency, dpadFrame.Visible = 1, false
-dpadFrame.Active = true
-Instance.new("UICorner", dpadFrame).CornerRadius = UDim.new(0, 14)
-local dpadEditStroke = Instance.new("UIStroke", dpadFrame)
-dpadEditStroke.Thickness, dpadEditStroke.Color, dpadEditStroke.Enabled = 2, Color3.fromRGB(0, 255, 255), false
-
-local dpadDragLabel = Instance.new("TextLabel", dpadFrame)
-dpadDragLabel.Size, dpadDragLabel.Position = UDim2.new(1, 0, 0, 20), UDim2.new(0, 0, -0.18, 0)
-dpadDragLabel.BackgroundTransparency, dpadDragLabel.Visible = 1, false
-dpadDragLabel.Text, dpadDragLabel.TextColor3 = "✋ ТАЩИТЕ СЮДА", Color3.fromRGB(0, 255, 255)
-dpadDragLabel.Font, dpadDragLabel.TextSize = Enum.Font.GothamBold, 10
-
--- Логика перетаскивания D-Pad
-local dpadDragging, dpadDragStart, dpadStartPos = false, nil, nil
-dpadFrame.InputBegan:Connect(function(i)
-    if EDITING_DPAD and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1) then
-        dpadDragging = true
-        dpadDragStart = i.Position
-        dpadStartPos = dpadFrame.Position
-    end
-end)
-UserInputService.InputChanged:Connect(function(i)
-    if dpadDragging and EDITING_DPAD and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseMovement) then
-        local delta = i.Position - dpadDragStart
-        dpadFrame.Position = UDim2.new(dpadStartPos.X.Scale, dpadStartPos.X.Offset + delta.X, dpadStartPos.Y.Scale, dpadStartPos.Y.Offset + delta.Y)
-    end
-end)
-UserInputService.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
-        dpadDragging = false
-    end
-end)
-
-local function makeDpadBtn(sym, pos, fn)
-    local btn = Instance.new("TextButton", dpadFrame)
-    btn.Size, btn.Position = UDim2.new(0, 44, 0, 44), pos
-    btn.BackgroundColor3, btn.BackgroundTransparency = Color3.fromRGB(16, 18, 26), 0.2
-    btn.Text, btn.TextColor3 = sym, Color3.fromRGB(0, 255, 180)
-    btn.Font, btn.TextSize = Enum.Font.GothamBold, 18
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
-    local strk = Instance.new("UIStroke", btn)
-    strk.Thickness, strk.Color = 1.2, Color3.fromRGB(0, 255, 180)
-    
-    local function down() if not EDITING_DPAD then fn(true) btn.BackgroundColor3 = Color3.fromRGB(0, 255, 180) btn.TextColor3 = Color3.fromRGB(10, 10, 10) end end
-    local function up() if not EDITING_DPAD then fn(false) btn.BackgroundColor3 = Color3.fromRGB(16, 18, 26) btn.TextColor3 = Color3.fromRGB(0, 255, 180) end end
-    btn.MouseButton1Down:Connect(down)
-    btn.MouseButton1Up:Connect(up)
-    btn.MouseLeave:Connect(up)
+local function makeBtn(txt, pos, col, tCol)
+    local b = Instance.new("TextButton", mainCard)
+    b.Size, b.Position = UDim2.new(0, 150, 0, 35), pos
+    b.BackgroundColor3, b.TextColor3, b.Text = col, tCol, txt
+    b.Font, b.TextSize = Enum.Font.GothamBold, 10
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+    return b
 end
 
+-- ЛЕВАЯ КОЛОНКА
+local toggleBtn   = makeBtn("⏻ ВКЛЮЧИТЬ VR", UDim2.new(0, 10, 0, 45), Color3.fromRGB(22, 24, 32), Color3.fromRGB(0, 255, 180))
+local modeBtn     = makeBtn("👆 ПОВОРОТ: ПАЛЬЦЕМ", UDim2.new(0, 10, 0, 85), Color3.fromRGB(20, 22, 30), Color3.fromRGB(255, 180, 0))
+local padModeBtn  = makeBtn("🖐️ ПАДЫ: ДВИЖЕНИЕ", UDim2.new(0, 10, 0, 125), Color3.fromRGB(30, 20, 40), Color3.fromRGB(255, 100, 200))
+local uiEditBtn   = makeBtn("📍 РЕДАКТОР ИНТЕРФЕЙСА", UDim2.new(0, 10, 0, 165), Color3.fromRGB(22, 28, 38), Color3.fromRGB(0, 200, 255))
+
+-- ПРАВАЯ КОЛОНКА
+local handStyleBtn = makeBtn("🎨 СТИЛЬ: ТВОЙ СКИН", UDim2.new(0, 170, 0, 45), Color3.fromRGB(18, 20, 28), Color3.fromRGB(240, 180, 255))
+local fovBtn       = makeBtn("👁️ FOV: 90°", UDim2.new(0, 170, 0, 85), Color3.fromRGB(18, 20, 26), Color3.fromRGB(255, 200, 100))
+local crouchBtn    = makeBtn("🧎 ПРИСЕСТЬ", UDim2.new(0, 170, 0, 125), Color3.fromRGB(18, 20, 26), Color3.fromRGB(180, 220, 255))
+local calibBtn     = makeBtn("🎯 ЦЕНТР КАМЕРЫ", UDim2.new(0, 170, 0, 165), Color3.fromRGB(18, 20, 26), Color3.fromRGB(200, 200, 220))
+
+-- // 2. КАСТОМНЫЙ PROXIMITY PROMPT (КНОПКА ДЛЯ ВЗАИМОДЕЙСТВИЯ С ПРЕДМЕТАМИ)
+local interactFrame = Instance.new("Frame", screenGui)
+interactFrame.Size, interactFrame.Position = UDim2.new(0, 200, 0, 50), UDim2.new(0.5, -100, 0.7, 0)
+interactFrame.BackgroundTransparency, interactFrame.Visible = 1, false
+local interactBtn = Instance.new("TextButton", interactFrame)
+interactBtn.Size, interactBtn.Position = UDim2.new(1, 0, 1, 0), UDim2.new(0, 0, 0, 0)
+interactBtn.BackgroundColor3, interactBtn.BackgroundTransparency = Color3.fromRGB(255, 200, 50), 0.1
+interactBtn.Text, interactBtn.TextColor3 = "🖐️ ВЗЯТЬ (E)", Color3.fromRGB(20, 20, 20)
+interactBtn.Font, interactBtn.TextSize = Enum.Font.GothamBold, 16
+Instance.new("UICorner", interactBtn).CornerRadius = UDim.new(0, 25)
+local interactStroke = Instance.new("UIStroke", interactBtn)
+interactStroke.Thickness, interactStroke.Color = 3, Color3.fromRGB(255, 255, 255)
+
+local currentPrompt = nil
+ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
+    if VR_ACTIVE and inputType == Enum.ProximityPromptInputType.Keyboard then
+        prompt.Style = Enum.ProximityPromptStyle.Custom -- Скрываем дефолтную табличку
+        currentPrompt = prompt
+        interactBtn.Text = "🖐️ " .. prompt.ActionText .. "\n" .. prompt.ObjectText
+        interactFrame.Visible = true
+    end
+end)
+ProximityPromptService.PromptHidden:Connect(function(prompt)
+    if currentPrompt == prompt then
+        currentPrompt = nil
+        interactFrame.Visible = false
+    end
+end)
+interactBtn.MouseButton1Down:Connect(function()
+    if currentPrompt then
+        interactBtn.BackgroundColor3 = Color3.fromRGB(200, 150, 30)
+        currentPrompt:InputHoldBegin()
+    end
+end)
+interactBtn.MouseButton1Up:Connect(function()
+    if currentPrompt then
+        interactBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 50)
+        currentPrompt:InputHoldEnd()
+    end
+end)
+interactBtn.MouseLeave:Connect(function()
+    if currentPrompt then
+        interactBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 50)
+        currentPrompt:InputHoldEnd()
+    end
+end)
+
+-- // 3. УПРАВЛЕНИЕ: D-PAD И ДЖОЙСТИКИ РУК
+local function createUIContainer(name, size, pos, addLabel)
+    local c = Instance.new("Frame", screenGui)
+    c.Size, c.Position, c.BackgroundTransparency, c.Visible, c.Active = size, pos, 1, false, true
+    local strk = Instance.new("UIStroke", c)
+    strk.Thickness, strk.Color, strk.Enabled = 2, Color3.fromRGB(0, 255, 255), false
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 14)
+    if addLabel then
+        local lbl = Instance.new("TextLabel", c)
+        lbl.Size, lbl.Position, lbl.BackgroundTransparency = UDim2.new(1,0,0,20), UDim2.new(0,0,-0.18,0), 1
+        lbl.Text, lbl.TextColor3, lbl.Font, lbl.TextSize = "✋ ТАЩИ СЮДА", Color3.fromRGB(0, 255, 255), Enum.Font.GothamBold, 10
+        lbl.Visible, lbl.Name = false, "DragLbl"
+    end
+    makeDraggable(c)
+    return c, strk
+end
+
+local dpadContainer, dpadStroke = createUIContainer("DPad", UDim2.new(0, 140, 0, 140), UDim2.new(0, 20, 1, -165), true)
+local handContL, strokeL = createUIContainer("HandL", UDim2.new(0, 100, 0, 100), UDim2.new(0, 10, 0.38, 0), true)
+local handContR, strokeR = createUIContainer("HandR", UDim2.new(0, 100, 0, 100), UDim2.new(1, -110, 0.38, 0), true)
+
+-- Кнопки D-PAD
+local function makeDpadBtn(sym, pos, fn)
+    local b = Instance.new("TextButton", dpadContainer)
+    b.Size, b.Position, b.BackgroundColor3, b.BackgroundTransparency = UDim2.new(0,44,0,44), pos, Color3.fromRGB(16,18,26), 0.2
+    b.Text, b.TextColor3, b.Font, b.TextSize = sym, Color3.fromRGB(0,255,180), Enum.Font.GothamBold, 18
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,10)
+    Instance.new("UIStroke", b).Color = Color3.fromRGB(0,255,180)
+    local function down() if not EDITING_UI then fn(true) b.BackgroundColor3, b.TextColor3 = Color3.fromRGB(0,255,180), Color3.fromRGB(10,10,10) end end
+    local function up() if not EDITING_UI then fn(false) b.BackgroundColor3, b.TextColor3 = Color3.fromRGB(16,18,26), Color3.fromRGB(0,255,180) end end
+    b.MouseButton1Down:Connect(down) b.MouseButton1Up:Connect(up) b.MouseLeave:Connect(up)
+end
 makeDpadBtn("▲", UDim2.new(0, 48, 0, 0), function(v) moveForward = v end)
 makeDpadBtn("▼", UDim2.new(0, 48, 0, 96), function(v) moveBackward = v end)
 makeDpadBtn("◄", UDim2.new(0, 0, 0, 48), function(v) moveLeft = v end)
 makeDpadBtn("►", UDim2.new(0, 96, 0, 48), function(v) moveRight = v end)
 
--- // 3. УМНЫЕ ДЖОЙСТИКИ РУК (ДВИЖЕНИЕ + ВРАЩЕНИЕ КИСТИ)
-local function makeHandPad(isLeft)
-    local cont = Instance.new("Frame", screenGui)
-    cont.Size, cont.Position = UDim2.new(0, 100, 0, 100), isLeft and UDim2.new(0, 10, 0.38, 0) or UDim2.new(1, -110, 0.38, 0)
-    cont.BackgroundTransparency, cont.Active, cont.Visible = 1, true, false
-    
+-- Джойстики рук
+local function buildHandPad(cont, isLeft)
     local pad = Instance.new("Frame", cont)
-    pad.Size, pad.Position = UDim2.new(0, 72, 0, 72), UDim2.new(0.5, -36, 0.5, -36)
-    pad.BackgroundColor3, pad.BackgroundTransparency = Color3.fromRGB(14, 16, 24), 0.2
-    Instance.new("UICorner", pad).CornerRadius = UDim.new(1, 0)
-    local stroke = Instance.new("UIStroke", pad)
-    stroke.Thickness, stroke.Color = 1.6, Color3.fromRGB(0, 255, 180)
+    pad.Size, pad.Position, pad.BackgroundColor3, pad.BackgroundTransparency = UDim2.new(0,72,0,72), UDim2.new(0.5,-36,0.5,-36), Color3.fromRGB(14,16,24), 0.2
+    Instance.new("UICorner", pad).CornerRadius = UDim.new(1,0)
+    local pStroke = Instance.new("UIStroke", pad)
+    pStroke.Thickness, pStroke.Color = 1.6, Color3.fromRGB(0,255,180)
 
     local knob = Instance.new("Frame", pad)
-    knob.Size, knob.Position = UDim2.new(0, 30, 0, 30), UDim2.new(0.5, -15, 0.5, -15)
-    knob.BackgroundColor3 = Color3.fromRGB(0, 255, 180)
-    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-    
+    knob.Size, knob.Position, knob.BackgroundColor3 = UDim2.new(0,30,0,30), UDim2.new(0.5,-15,0.5,-15), Color3.fromRGB(0,255,180)
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
     local lbl = Instance.new("TextLabel", knob)
-    lbl.Size, lbl.BackgroundTransparency = UDim2.new(1, 0, 1, 0), 1
-    lbl.Text, lbl.TextColor3 = isLeft and "L" or "R", Color3.fromRGB(10, 15, 20)
-    lbl.Font, lbl.TextSize = Enum.Font.GothamBold, 12
+    lbl.Size, lbl.BackgroundTransparency, lbl.Text, lbl.TextColor3, lbl.Font, lbl.TextSize = UDim2.new(1,0,1,0), 1, isLeft and "L" or "R", Color3.fromRGB(10,15,20), Enum.Font.GothamBold, 12
 
-    local drag, tPos = false, nil
-    local lastTap = 0
-
+    local drag, tPos, lastTap = false, nil, 0
     cont.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
-            -- Двойной тап = сброс вращения кисти
+        if not EDITING_UI and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1) then
             if tick() - lastTap < 0.3 then
                 if isLeft then wristYawL, wristPitchL = 0, 0 else wristYawR, wristPitchR = 0, 0 end
-                stroke.Color = Color3.fromRGB(255, 255, 255)
+                pStroke.Color = Color3.fromRGB(255, 255, 255)
             else
-                stroke.Color = PAD_MODE == "MOVE" and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 100, 200)
+                pStroke.Color = PAD_MODE == "MOVE" and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 100, 200)
             end
-            lastTap = tick()
-            drag, tPos = true, i.Position
+            lastTap, drag, tPos = tick(), true, i.Position
         end
     end)
-
     UserInputService.InputChanged:Connect(function(i)
-        if drag and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseMovement) then
+        if drag and not EDITING_UI and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseMovement) then
+            local delta = i.Position - tPos
             if PAD_MODE == "MOVE" then
-                local delta = i.Position - tPos
                 local vOff = (delta.Magnitude > 0 and delta.Unit or Vector2.zero) * math.clamp(delta.Magnitude, 0, 30)
                 knob.Position = UDim2.new(0.5, -15 + vOff.X, 0.5, -15 + vOff.Y)
-                
                 local vec = Vector3.new(math.clamp(delta.X/38, -0.75, 0.75), math.clamp(-delta.Y/38, -0.75, 0.75), -math.clamp(delta.Magnitude/26, 0, 1.3))
                 if isLeft then handDragL = vec else handDragR = vec end
             elseif PAD_MODE == "ROTATE" then
-                -- Вращение накапливается от дельты свайпа
-                local d = i.Delta
-                if isLeft then
-                    wristYawL = wristYawL - d.X * 0.015
-                    wristPitchL = math.clamp(wristPitchL - d.Y * 0.015, -math.pi, math.pi)
-                else
-                    wristYawR = wristYawR - d.X * 0.015
-                    wristPitchR = math.clamp(wristPitchR - d.Y * 0.015, -math.pi, math.pi)
-                end
+                if isLeft then wristYawL = wristYawL - i.Delta.X*0.015; wristPitchL = math.clamp(wristPitchL - i.Delta.Y*0.015, -math.pi, math.pi)
+                else wristYawR = wristYawR - i.Delta.X*0.015; wristPitchR = math.clamp(wristPitchR - i.Delta.Y*0.015, -math.pi, math.pi) end
             end
         end
     end)
-
-    cont.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
-            drag, tPos = false, nil
-            stroke.Color = Color3.fromRGB(0, 255, 180)
-            TweenService:Create(knob, TweenInfo.new(0.15), {Position = UDim2.new(0.5, -15, 0.5, -15)}):Play()
-            if isLeft then handDragL = Vector3.zero else handDragR = Vector3.zero end
-        end
-    end)
-    return cont
+    local function rel()
+        drag, tPos, pStroke.Color = false, nil, Color3.fromRGB(0, 255, 180)
+        TweenService:Create(knob, TweenInfo.new(0.15), {Position = UDim2.new(0.5,-15,0.5,-15)}):Play()
+        if isLeft then handDragL = Vector3.zero else handDragR = Vector3.zero end
+    end
+    cont.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then rel() end end)
 end
-local handPadL, handPadR = makeHandPad(true), makeHandPad(false)
+buildHandPad(handContL, true) buildHandPad(handContR, false)
 
--- // 4. СОЗДАНИЕ ГЛАДКИХ РУК
+-- // 4. МОДЕЛИ РУК И ОРУЖИЯ
 local function buildArm(isLeft)
     local m = Instance.new("Model")
     m.Name = isLeft and "VR_L" or "VR_R"
+    local st = STYLES[HAND_STYLE]
+    local c, cuffC, mat = st.Col, st.Cuff, st.Mat
     
-    local c, cuffC, mat = Color3.fromRGB(225, 185, 145), Color3.fromRGB(0, 255, 180), Enum.Material.SmoothPlastic
-    if HAND_STYLE == 2 then c, cuffC, mat = Color3.fromRGB(20, 22, 28), Color3.fromRGB(0, 230, 255), Enum.Material.Neon
-    elseif HAND_STYLE == 3 then c, cuffC = Color3.fromRGB(35, 35, 40), Color3.fromRGB(255, 60, 60) end
-
-    local function mk(name, sz, col, mt)
-        local p = Instance.new("Part")
-        p.Name, p.Size, p.Color, p.Material = name, sz, col, mt
-        p.TopSurface, p.BottomSurface, p.LeftSurface, p.RightSurface, p.FrontSurface, p.BackSurface = 0,0,0,0,0,0
-        p.CanCollide, p.CanTouch, p.CanQuery, p.Anchored, p.CastShadow = false, false, false, true, false
-        p.Parent = m
-        return p
+    if HAND_STYLE == 1 then
+        local char = player.Character
+        local rp = char and (char:FindFirstChild(isLeft and "LeftHand" or "RightHand") or char:FindFirstChild(isLeft and "Left Arm" or "Right Arm") or char:FindFirstChild("Head"))
+        c = rp and rp.Color or Color3.fromRGB(225, 185, 145)
     end
 
-    mk("Forearm", Vector3.new(0.48, 0.48, 1.1), c, mat)
-    mk("Cuff", Vector3.new(0.52, 0.52, 0.1), cuffC, Enum.Material.Neon)
-    mk("Palm", Vector3.new(0.44, 0.35, 0.5), c, mat)
-    mk("Fingers", Vector3.new(0.42, 0.28, 0.3), c, mat)
-    
+    local function mk(name, sz, offZ)
+        local p = Instance.new("Part")
+        p.Name, p.Size, p.Color, p.Material = name, sz, (name == "Cuff" and cuffC or c), (name == "Cuff" and Enum.Material.Neon or mat)
+        p.TopSurface, p.BottomSurface, p.LeftSurface, p.RightSurface, p.FrontSurface, p.BackSurface = 0,0,0,0,0,0
+        p.CanCollide, p.CanTouch, p.CanQuery, p.Anchored, p.CastShadow, p.Parent = false, false, false, true, false, m
+        return p
+    end
+    mk("Forearm", Vector3.new(0.48, 0.48, 1.1))
+    mk("Cuff", Vector3.new(0.52, 0.52, 0.1))
+    mk("Palm", Vector3.new(0.44, 0.35, 0.5))
+    mk("Fingers", Vector3.new(0.42, 0.28, 0.3))
     m.Parent = viewmodelFolder
     return m
 end
@@ -285,21 +300,19 @@ local function setupHands()
     leftArmModel, rightArmModel = buildArm(true), buildArm(false)
 end
 
--- // 5. КАМЕРА И AIM-TO-TOUCH
+-- // 5. ИНТЕРАКТИВ (КАМЕРА И ТАПЫ)
 UserInputService.InputBegan:Connect(function(input, processed)
     if not VR_ACTIVE then return end
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         local posX = input.Position.X
-        if posX > camera.ViewportSize.X * 0.42 and not processed then
-            cameraTouchInput = input
-        end
-        local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
-        local localDir = camera.CFrame:VectorToObjectSpace(ray.Direction).Unit
-        local aimRot = CFrame.lookAt(Vector3.zero, localDir)
-        if posX < camera.ViewportSize.X * 0.5 then
-            tapReachL, tapRotL, tapAlphaL = localDir * 1.4, aimRot, 1
-        else
-            tapReachR, tapRotR, tapAlphaR = localDir * 1.4, aimRot, 1
+        if posX > camera.ViewportSize.X * 0.42 and not processed and not EDITING_UI then cameraTouchInput = input end
+        
+        if not processed and not EDITING_UI then
+            local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
+            local localDir = camera.CFrame:VectorToObjectSpace(ray.Direction).Unit
+            local aimRot = CFrame.lookAt(Vector3.zero, localDir)
+            if posX < camera.ViewportSize.X * 0.5 then tapReachL, tapRotL, tapAlphaL = localDir * 1.4, aimRot, 1
+            else tapReachR, tapRotR, tapAlphaR = localDir * 1.4, aimRot, 1 end
         end
     end
 end)
@@ -313,15 +326,13 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 UserInputService.InputEnded:Connect(function(input) if input == cameraTouchInput then cameraTouchInput = nil end end)
-if UserInputService.GyroscopeEnabled then
-    gyroConnection = UserInputService.DeviceRotationChanged:Connect(function(_, rotCFrame) rawGyroCF = rotCFrame end)
-end
+if UserInputService.GyroscopeEnabled then gyroConnection = UserInputService.DeviceRotationChanged:Connect(function(_, rotCFrame) rawGyroCF = rotCFrame end) end
 
--- // 6. ГЛАВНЫЙ ЦИКЛ VR (ИДЕАЛЬНАЯ МАТЕМАТИКА ХОДЬБЫ)
+-- // 6. ГЛАВНЫЙ ЦИКЛ VR
 local function startVR()
     VR_ACTIVE = true
     camera.CameraType = Enum.CameraType.Scriptable
-    dpadFrame.Visible, handPadL.Visible, handPadR.Visible = true, true, true
+    dpadContainer.Visible, handContL.Visible, handContR.Visible = true, true, true
     baseGyroCF, smoothedCamRot, lastCamCF = rawGyroCF, CFrame.identity, camera.CFrame
     touchYaw, touchPitch = 0, 0
     camera.FieldOfView = FOV_MODES[FOV_INDEX]
@@ -330,7 +341,6 @@ local function startVR()
     toggleBtn.Text, toggleBtn.TextColor3 = "⏻ ВЫКЛЮЧИТЬ VR", Color3.fromRGB(255, 80, 80)
     cardStroke.Color = Color3.fromRGB(255, 80, 80)
 
-    -- Поворот тела (FE)
     physicsLoopConnection = RunService.Stepped:Connect(function()
         local char = player.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -348,7 +358,6 @@ local function startVR()
         local char = player.Character
         if not char then return end
 
-        -- ZERO GHOST: Скрытие оригинального тела
         for _, item in ipairs(char:GetDescendants()) do
             if item:IsA("BasePart") and not item:IsDescendantOf(char:FindFirstChildOfClass("Tool") or game) then
                 item.LocalTransparencyModifier = 1
@@ -360,39 +369,26 @@ local function startVR()
         local head = char:FindFirstChild("Head")
         if not head or not root or not humanoid then return end
 
-        -- 1. ИДЕАЛЬНАЯ ХОДЬБА (Извлечение чистого Yaw от камеры)
-        if not EDITING_DPAD then
-            local moveZ = (moveForward and -1 or 0) + (moveBackward and 1 or 0) -- -1 это вперед по оси локальной Z
+        if not EDITING_UI then
+            local moveZ = (moveForward and -1 or 0) + (moveBackward and 1 or 0)
             local moveX = (moveRight and 1 or 0) + (moveLeft and -1 or 0)
-            
             if moveZ ~= 0 or moveX ~= 0 then
-                -- Берем угол поворота камеры по Y (Yaw)
                 local _, camYaw, _ = camera.CFrame:ToEulerAnglesYXZ()
-                local camRot = CFrame.Angles(0, camYaw, 0)
-                
-                -- Вектор направления движения: переводим локальные нажатия в мировые координаты
-                local moveDir = camRot * Vector3.new(moveX, 0, moveZ)
-                if moveDir.Magnitude > 0.01 then
-                    humanoid:Move(moveDir.Unit, false)
-                end
-            else
-                humanoid:Move(Vector3.zero, false)
-            end
+                local moveDir = CFrame.Angles(0, camYaw, 0) * Vector3.new(moveX, 0, moveZ)
+                if moveDir.Magnitude > 0.01 then humanoid:Move(moveDir.Unit, false) end
+            else humanoid:Move(Vector3.zero, false) end
         end
 
-        -- 2. Камера
         local targetRot
         if CONTROL_MODE == "GYRO" then
-            local rx, ry, rz = baseGyroCF:ToObjectSpace(rawGyroCF):ToOrientation()
+            local rx, ry, rz = baseGyroCF:ToObjectSpace(rawGyroCF):ToEulerAnglesYXZ()
             targetRot = CFrame.Angles(0, -rz + touchYaw, 0) * CFrame.Angles(math.clamp(-rx, math.rad(-75), math.rad(75)) + touchPitch, 0, 0)
-        else
-            targetRot = CFrame.Angles(0, touchYaw, 0) * CFrame.Angles(touchPitch, 0, 0)
-        end
+        else targetRot = CFrame.Angles(0, touchYaw, 0) * CFrame.Angles(touchPitch, 0, 0) end
+        
         smoothedCamRot = smoothedCamRot:Lerp(targetRot, 0.4)
         camera.CFrame = CFrame.new(head.Position + Vector3.new(0, IS_CROUCHING and -1.4 or 0.25, 0)) * smoothedCamRot
         local camCF = camera.CFrame
 
-        -- 3. Инерция и шаги
         local dRot = camCF:ToObjectSpace(lastCamCF)
         swayCF = swayCF:Lerp(CFrame.Angles(math.clamp(dRot.X*0.5, -0.12, 0.12), math.clamp(dRot.Y*0.5, -0.12, 0.12), 0), 0.25)
         lastCamCF = camCF
@@ -404,41 +400,31 @@ local function startVR()
         currentHandOffsetL = currentHandOffsetL:Lerp(handDragL + (tapReachL * tapAlphaL), 0.28)
         currentHandOffsetR = currentHandOffsetR:Lerp(handDragR + (tapReachR * tapAlphaR), 0.28)
 
-        -- 4. Рендер кистей с учетом вращения (Wrist Rotation)
         local function updateArm(arm, isL, off, tRot, tAlpha, wPitch, wYaw)
             if not arm then return end
             local side = isL and -1 or 1
-            
-            -- Дефолтный угол + наклон пользователя (Wrist Rotation)
             local userWrist = CFrame.Angles(wPitch, wYaw, 0)
             local baseAngle = CFrame.Angles(math.rad(12 - off.Z*20 + off.Y*16), math.rad(-side*8 + off.X*20), math.rad(side*4)) * userWrist
             local finalAngle = baseAngle:Lerp(tRot, tAlpha*0.8)
 
             local base = camCF * swayCF * CFrame.new(side*(0.65 - (side*bobX)) + off.X, -0.65 + bobY + off.Y, -1.05 + off.Z) * finalAngle
-
             local f, c, p, fg = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("Palm"), arm:FindFirstChild("Fingers")
             if f and c and p and fg then
-                f.CFrame = base * CFrame.new(0, 0, 0.35)
-                c.CFrame = base * CFrame.new(0, 0, -0.22)
-                p.CFrame = base * CFrame.new(0, -0.02, -0.5) * CFrame.Angles(math.rad(8), 0, 0)
-                fg.CFrame = base * CFrame.new(0, -0.05, -0.85) * CFrame.Angles(math.rad(18), 0, 0)
+                f.CFrame, c.CFrame = base * CFrame.new(0, 0, 0.35), base * CFrame.new(0, 0, -0.22)
+                p.CFrame, fg.CFrame = base * CFrame.new(0, -0.02, -0.5) * CFrame.Angles(math.rad(8), 0, 0), base * CFrame.new(0, -0.05, -0.85) * CFrame.Angles(math.rad(18), 0, 0)
             end
         end
 
         updateArm(leftArmModel, true, currentHandOffsetL, tapRotL, tapAlphaL, wristPitchL, wristYawL)
         updateArm(rightArmModel, false, currentHandOffsetR, tapRotR, tapAlphaR, wristPitchR, wristYawR)
 
-        -- 5. ИДЕАЛЬНЫЙ GRIP ПРЕДМЕТА В РУКЕ
         local tool = char:FindFirstChildOfClass("Tool")
         if tool then
             local rightGrip = nil
-            for _, v in ipairs(char:GetDescendants()) do
-                if v:IsA("Weld") and v.Name == "RightGrip" then rightGrip = v break end
-            end
+            for _, v in ipairs(char:GetDescendants()) do if v:IsA("Weld") and v.Name == "RightGrip" then rightGrip = v break end end
             local vrPalm = rightArmModel and rightArmModel:FindFirstChild("Palm")
             if rightGrip and vrPalm then
-                rightGrip.Part0 = vrPalm
-                rightGrip.C0 = CFrame.new(0, -0.1, -0.3) * CFrame.Angles(math.rad(-90), 0, 0)
+                rightGrip.Part0, rightGrip.C0, rightGrip.C1 = vrPalm, CFrame.new(0, -0.1, -0.3) * CFrame.Angles(math.rad(-90), 0, 0), tool.Grip
             end
         end
     end)
@@ -446,11 +432,10 @@ end
 
 local function stopVR()
     VR_ACTIVE = false
-    dpadFrame.Visible, handPadL.Visible, handPadR.Visible = false, false, false
+    dpadContainer.Visible, handContL.Visible, handContR.Visible = false, false, false
     moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
     if mainLoopConnection then mainLoopConnection:Disconnect() mainLoopConnection = nil end
     if physicsLoopConnection then physicsLoopConnection:Disconnect() physicsLoopConnection = nil end
-
     camera.CameraType, camera.FieldOfView = Enum.CameraType.Custom, 70
     local char = player.Character
     if char then
@@ -461,6 +446,7 @@ local function stopVR()
     toggleBtn.Text, toggleBtn.TextColor3, cardStroke.Color = "⏻ ВКЛЮЧИТЬ VR", Color3.fromRGB(0, 255, 180), Color3.fromRGB(0, 255, 180)
 end
 
+-- // 7. ОБРАБОТЧИКИ МЕНЮ
 toggleBtn.MouseButton1Click:Connect(function() if VR_ACTIVE then stopVR() else startVR() end end)
 modeBtn.MouseButton1Click:Connect(function()
     CONTROL_MODE = (CONTROL_MODE == "TOUCH") and "GYRO" or "TOUCH"
@@ -469,9 +455,8 @@ modeBtn.MouseButton1Click:Connect(function()
     if CONTROL_MODE == "GYRO" then baseGyroCF = rawGyroCF end
 end)
 handStyleBtn.MouseButton1Click:Connect(function()
-    HAND_STYLE = HAND_STYLE % 3 + 1
-    handStyleBtn.Text = HAND_STYLE == 1 and "🎨 СТИЛЬ: ТВОЙ СКИН" or (HAND_STYLE == 2 and "🎨 СТИЛЬ: НЕОН КИБЕР" or "🎨 СТИЛЬ: СТЕЛС ПЕРЧАТКИ")
-    handStyleBtn.TextColor3 = HAND_STYLE == 1 and Color3.fromRGB(240, 180, 255) or (HAND_STYLE == 2 and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 80, 80))
+    HAND_STYLE = HAND_STYLE % #STYLES + 1
+    handStyleBtn.Text = "🎨 СТИЛЬ: " .. STYLES[HAND_STYLE].Name
     if VR_ACTIVE then setupHands() end
 end)
 padModeBtn.MouseButton1Click:Connect(function()
@@ -479,28 +464,33 @@ padModeBtn.MouseButton1Click:Connect(function()
     padModeBtn.Text = PAD_MODE == "MOVE" and "🖐️ ПАДЫ: ДВИЖЕНИЕ" or "🔄 ПАДЫ: ВРАЩЕНИЕ"
     padModeBtn.TextColor3 = PAD_MODE == "MOVE" and Color3.fromRGB(255, 100, 200) or Color3.fromRGB(200, 255, 100)
 end)
-dpadPosBtn.MouseButton1Click:Connect(function()
-    EDITING_DPAD = not EDITING_DPAD
-    dpadFrame.Draggable = EDITING_DPAD
-    dpadFrame.BackgroundTransparency = EDITING_DPAD and 0.4 or 1
-    dpadFrame.BackgroundColor3 = Color3.fromRGB(15, 25, 35)
-    dpadEditStroke.Enabled = EDITING_DPAD
-    dpadDragLabel.Visible = EDITING_DPAD
-    dpadPosBtn.Text = EDITING_DPAD and "💾 ПРИМЕНИТЬ" or "📍 НАСТРОИТЬ СТРЕЛКИ"
-    dpadPosBtn.TextColor3 = EDITING_DPAD and Color3.fromRGB(0, 255, 140) or Color3.fromRGB(0, 200, 255)
-    if not EDITING_DPAD then moveForward, moveBackward, moveLeft, moveRight = false, false, false, false end
+uiEditBtn.MouseButton1Click:Connect(function()
+    EDITING_UI = not EDITING_UI
+    dpadStroke.Enabled, strokeL.Enabled, strokeR.Enabled = EDITING_UI, EDITING_UI, EDITING_UI
+    dpadContainer.DragLbl.Visible, handContL.DragLbl.Visible, handContR.DragLbl.Visible = EDITING_UI, EDITING_UI, EDITING_UI
+    dpadContainer.BackgroundTransparency = EDITING_UI and 0.5 or 1
+    handContL.BackgroundTransparency = EDITING_UI and 0.5 or 1
+    handContR.BackgroundTransparency = EDITING_UI and 0.5 or 1
+    uiEditBtn.Text = EDITING_UI and "💾 СОХРАНИТЬ ИНТЕРФЕЙС" or "📍 РЕДАКТОР ИНТЕРФЕЙСА"
+    uiEditBtn.TextColor3 = EDITING_UI and Color3.fromRGB(0, 255, 140) or Color3.fromRGB(0, 200, 255)
+    if not EDITING_UI then moveForward, moveBackward, moveLeft, moveRight = false, false, false, false end
 end)
 crouchBtn.MouseButton1Click:Connect(function()
     IS_CROUCHING = not IS_CROUCHING
     crouchBtn.Text, crouchBtn.TextColor3 = IS_CROUCHING and "🚶 ВСТАТЬ" or "🧎 ПРИСЕСТЬ", IS_CROUCHING and Color3.fromRGB(0, 255, 180) or Color3.fromRGB(180, 220, 255)
 end)
 calibBtn.MouseButton1Click:Connect(function()
-    if VR_ACTIVE then baseGyroCF, touchYaw, touchPitch, calibBtn.Text = rawGyroCF, 0, 0, "✨ ОК" task.wait(0.4) calibBtn.Text = "🎯 ЦЕНТР" end
+    if VR_ACTIVE then baseGyroCF, touchYaw, touchPitch, calibBtn.Text = rawGyroCF, 0, 0, "✨ ОК" task.wait(0.4) calibBtn.Text = "🎯 ЦЕНТР КАМЕРЫ" end
+end)
+fovBtn.MouseButton1Click:Connect(function()
+    FOV_INDEX = FOV_INDEX % #FOV_MODES + 1
+    fovBtn.Text = "👁️ FOV: " .. FOV_MODES[FOV_INDEX] .. "°"
+    if VR_ACTIVE then TweenService:Create(camera, TweenInfo.new(0.3), {FieldOfView = FOV_MODES[FOV_INDEX]}):Play() end
 end)
 minBtn.MouseButton1Click:Connect(function()
     MINIMIZED = not MINIMIZED
-    mainCard:TweenSize(UDim2.new(0, MINIMIZED and 36 or 215, 0, MINIMIZED and 36 or 260), "Out", "Quad", 0.2, true)
+    mainCard:TweenSize(UDim2.new(0, MINIMIZED and 36 or 340, 0, MINIMIZED and 36 or 220), "Out", "Quad", 0.2, true)
     for _, ch in ipairs(mainCard:GetChildren()) do if ch:IsA("GuiObject") and ch ~= minBtn and ch ~= cardStroke then ch.Visible = not MINIMIZED end end
-    minBtn.Text, minBtn.Position = MINIMIZED and "VR" or "—", MINIMIZED and UDim2.new(0, 7, 0, 7) or UDim2.new(1, -54, 0, 6)
+    minBtn.Text, minBtn.Position = MINIMIZED and "VR" or "—", MINIMIZED and UDim2.new(0, 7, 0, 7) or UDim2.new(1, -64, 0, 8)
 end)
 closeBtn.MouseButton1Click:Connect(function() stopVR() if gyroConnection then gyroConnection:Disconnect() end screenGui:Destroy() end)
