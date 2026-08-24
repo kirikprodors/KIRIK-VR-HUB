@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v42.0 OMEGA (PLAYER GRABBING, FIXED 2-HAND GRIP & DUAL NETWORK)
+-- // 👑 LUXURY VR ENGINE v43.0 OMEGA (PHYSICS SANDBOX GRAB, FIXED POSITIONING & ZERO LAG)
 
 -- ==============================================================================
 -- 🚀 ТВОЙ ЛИЧНЫЙ ПРИВАТНЫЙ WEBSOCKET СЕРВЕР:
@@ -17,7 +17,7 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 -- // 1. ОЧИСТКА ПРЕДЫДУЩИХ ВЕРСИЙ
-local GUI_NAME = "LuxuryVR_V42_GrandMaster"
+local GUI_NAME = "LuxuryVR_V43_Sandbox"
 pcall(function()
     if CoreGui:FindFirstChild(GUI_NAME) then CoreGui[GUI_NAME]:Destroy() end
     if player.PlayerGui:FindFirstChild(GUI_NAME) then player.PlayerGui[GUI_NAME]:Destroy() end
@@ -28,7 +28,7 @@ local VR_ACTIVE = false
 local EDITING_UI = false
 local NETWORK_ENABLED = true
 local TWO_HAND_MODE = false
-local PLAYER_GRAB_ENABLED = true
+local OBJECT_GRAB_ENABLED = true
 local CONTROL_MODE = "TOUCH"
 local PAD_MODE = "MOVE"
 local HAND_STYLE = 1
@@ -37,9 +37,9 @@ local FOV_INDEX = 2
 local SENS_MULTIPLIER = 1.3
 local IS_CROUCHING = false
 
--- Захват игроков
-local grabbedPlayerL = nil
-local grabbedPlayerR = nil
+-- Физический хват (Парты, Модели, Игроки)
+local grabbedDataL = nil -- {Target = Part/Model/Plr, Offset = CFrame}
+local grabbedDataR = nil
 local beingGrabbedBy = nil
 
 -- Масштаб контроллеров
@@ -70,7 +70,7 @@ local netAttemptId = 0
 local remoteVRUsers = {}
 local lastNetSend = 0
 
--- // 10 УЛЬТРА-ЛАКШЕРИ СТИЛЕЙ РУК
+-- 10 ЛАКШЕРИ СТИЛЕЙ РУК
 local STYLES = {
     {Name = "ТВОЙ СКИН", Col = nil, Cuff = Color3.fromRGB(0, 255, 180), Accent = Color3.fromRGB(0, 255, 180), Mat = Enum.Material.SmoothPlastic, Light = Color3.fromRGB(0, 255, 180)},
     {Name = "НЕОН КИБЕР", Col = Color3.fromRGB(15, 18, 26), Cuff = Color3.fromRGB(0, 240, 255), Accent = Color3.fromRGB(0, 255, 255), Mat = Enum.Material.Metal, Light = Color3.fromRGB(0, 240, 255)},
@@ -153,7 +153,7 @@ makeFreeDraggable(mainCard, dragHandle)
 
 local title = Instance.new("TextLabel", dragHandle)
 title.Size, title.Position = UDim2.new(1, 0, 0, 20), UDim2.new(0, 14, 0, 5)
-title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v42 (GRAND MASTER)"
+title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v43 (SANDBOX)"
 title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 12
 title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -182,7 +182,7 @@ closeBtn.Font, closeBtn.TextSize = Enum.Font.GothamBold, 12
 closeBtn.ZIndex = 51
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
 
--- УМНАЯ СФЕРА СВОРАЧИВАНИЯ
+-- УМНАЯ СФЕРА
 local floatOrb = Instance.new("TextButton", screenGui)
 floatOrb.Size, floatOrb.Position = UDim2.new(0, 52, 0, 52), UDim2.new(0.5, -26, 0.05, 0)
 floatOrb.BackgroundColor3, floatOrb.TextColor3, floatOrb.Text = Color3.fromRGB(10, 14, 20), Color3.fromRGB(0, 255, 180), "👑\nVR"
@@ -238,14 +238,14 @@ local modeBtn       = makeHubBtn("👆 ПОВОРОТ: ПАЛЬЦЕМ", UDim2.ne
 local fovBtn        = makeHubBtn("👁️ FOV: 90°", UDim2.new(0, 182, 0, 85), Color3.fromRGB(18, 20, 26), Color3.fromRGB(255, 200, 100))
 local padModeBtn    = makeHubBtn("🖐️ ПАДЫ: ДВИЖЕНИЕ", UDim2.new(0, 12, 0, 122), Color3.fromRGB(25, 18, 32), Color3.fromRGB(255, 100, 220))
 local twoHandBtn    = makeHubBtn("🗡️ ХВАТ: 1 РУКА", UDim2.new(0, 182, 0, 122), Color3.fromRGB(20, 25, 35), Color3.fromRGB(255, 170, 50))
-local grabToggleBtn = makeHubBtn("🤼 ХВАТ ИГРОКОВ: ВКЛ", UDim2.new(0, 12, 0, 159), Color3.fromRGB(35, 20, 25), Color3.fromRGB(255, 80, 120))
+local grabToggleBtn = makeHubBtn("🖐️ ХВАТ ПРЕДМЕТОВ: ВКЛ", UDim2.new(0, 12, 0, 159), Color3.fromRGB(35, 20, 25), Color3.fromRGB(255, 80, 120))
 local netToggleBtn  = makeHubBtn("🌐 СЕТЬ: ВКЛЮЧЕНА", UDim2.new(0, 182, 0, 159), Color3.fromRGB(18, 28, 24), Color3.fromRGB(0, 255, 180))
 local uiScaleBtn    = makeHubBtn("🔍 РАЗМЕР: 100%", UDim2.new(0, 12, 0, 196), Color3.fromRGB(22, 26, 36), Color3.fromRGB(255, 220, 100))
 local crouchBtn     = makeHubBtn("🧎 ПРИСЕСТЬ", UDim2.new(0, 182, 0, 196), Color3.fromRGB(18, 20, 26), Color3.fromRGB(180, 220, 255))
 local uiEditBtn     = makeHubBtn("📍 РЕДАКТОР ИНТЕРФЕЙСА", UDim2.new(0, 12, 0, 233), Color3.fromRGB(18, 25, 35), Color3.fromRGB(0, 200, 255))
 local calibBtn      = makeHubBtn("🎯 ЦЕНТР КАМЕРЫ", UDim2.new(0, 182, 0, 233), Color3.fromRGB(18, 20, 26), Color3.fromRGB(200, 200, 220))
 
--- // 4. УПРАВЛЕНИЕ: D-PAD И ДЖОЙСТИКИ
+-- // 4. УПРАВЛЕНИЕ: D-PAD И ПАДЫ
 local dpadContainer, dpadStroke = nil, nil
 local handContL, strokeL = nil, nil
 local handContR, strokeR = nil, nil
@@ -302,20 +302,47 @@ createDpadBtn("▼", "DOWN", function(v) moveBackward = v end)
 createDpadBtn("◄", "LEFT", function(v) moveLeft = v end)
 createDpadBtn("►", "RIGHT", function(v) moveRight = v end)
 
--- Поиск ближайшего игрока для захвата
-local function getClosestPlayerToPalm(palmPart, maxDist)
+-- // УНИВЕРСАЛЬНЫЙ ПОИСК ДЛЯ ЗАХВАТА (ПАРТЫ, МОДЕЛИ, ИГРОКИ)
+local function findUniversalGrabTarget(palmPart, maxDist)
     if not palmPart then return nil end
-    local closest, closestDist = nil, maxDist or 5.5
+    local pPos = palmPart.Position
+    local closestObj = nil
+    local closestDist = maxDist or 6.5
+
+    -- 1. Проверяем игроков
     for _, otherPlr in ipairs(Players:GetPlayers()) do
         if otherPlr ~= player and otherPlr.Character and otherPlr.Character:FindFirstChild("HumanoidRootPart") then
-            local dist = (otherPlr.Character.HumanoidRootPart.Position - palmPart.Position).Magnitude
-            if dist < closestDist then
-                closest = otherPlr
-                closestDist = dist
+            local rPart = otherPlr.Character.HumanoidRootPart
+            local d = (rPart.Position - pPos).Magnitude
+            if d < closestDist then
+                closestDist = d
+                closestObj = {Type = "PLAYER", Target = otherPlr, Part = rPart}
             end
         end
     end
-    return closest
+
+    -- 2. Проверяем интерактивные парты и модели в Workspace
+    local overlapParams = OverlapParams.new()
+    overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+    overlapParams.FilterDescendantsInstances = {player.Character, viewmodelFolder}
+
+    local nearbyParts = workspace:GetPartBoundsInRadius(pPos, closestDist, overlapParams)
+    for _, p in ipairs(nearbyParts) do
+        if p:IsA("BasePart") and not p.Anchored and p.Transparency < 0.95 and p.Size.Magnitude < 25 then
+            local d = (p.Position - pPos).Magnitude
+            if d < closestDist then
+                closestDist = d
+                local modelParent = p:FindFirstAncestorOfClass("Model")
+                if modelParent and modelParent.PrimaryPart and modelParent ~= workspace then
+                    closestObj = {Type = "MODEL", Target = modelParent, Part = modelParent.PrimaryPart}
+                else
+                    closestObj = {Type = "PART", Target = p, Part = p}
+                end
+            end
+        end
+    end
+
+    return closestObj
 end
 
 local function buildHandPad(cont, isLeft)
@@ -333,7 +360,6 @@ local function buildHandPad(cont, isLeft)
     lbl.Size, lbl.BackgroundTransparency = UDim2.new(1, 0, 1, 0), 1
     lbl.Text, lbl.TextColor3, lbl.Font, lbl.TextSize = isLeft and "L" or "R", Color3.fromRGB(10, 15, 20), Enum.Font.GothamBold, 12
 
-    -- Кнопка быстрого захвата рядом с падом
     local grabBtn = Instance.new("TextButton", cont)
     grabBtn.Size = UDim2.new(0, 26, 0, 26)
     grabBtn.Position = isLeft and UDim2.new(1, -28, 0, -5) or UDim2.new(0, 2, 0, -5)
@@ -351,24 +377,24 @@ local function buildHandPad(cont, isLeft)
         if not VR_ACTIVE then return end
         local palm = isLeft and (leftArmModel and leftArmModel:FindFirstChild("Palm")) or (rightArmModel and rightArmModel:FindFirstChild("Palm"))
         if isLeft then
-            if grabbedPlayerL then
-                grabbedPlayerL = nil
+            if grabbedDataL then
+                grabbedDataL = nil
                 grabBtn.BackgroundColor3 = Color3.fromRGB(30, 20, 25)
             else
-                local target = getClosestPlayerToPalm(palm, 6.0)
-                if target then
-                    grabbedPlayerL = target
+                local targetData = findUniversalGrabTarget(palm, 6.5)
+                if targetData then
+                    grabbedDataL = targetData
                     grabBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 120)
                 end
             end
         else
-            if grabbedPlayerR then
-                grabbedPlayerR = nil
+            if grabbedDataR then
+                grabbedDataR = nil
                 grabBtn.BackgroundColor3 = Color3.fromRGB(30, 20, 25)
             else
-                local target = getClosestPlayerToPalm(palm, 6.0)
-                if target then
-                    grabbedPlayerR = target
+                local targetData = findUniversalGrabTarget(palm, 6.5)
+                if targetData then
+                    grabbedDataR = targetData
                     grabBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 120)
                 end
             end
@@ -521,7 +547,7 @@ local function setupHands()
     leftArmModel, rightArmModel = buildArm(true), buildArm(false)
 end
 
--- // 6. СЕТЕВОЙ МОДУЛЬ (DUAL-SPACE & GRAB SYNC)
+-- // 6. СЕТЕВОЙ МОДУЛЬ (CHEST-ANCHORED RELATIVE SYNC)
 local function getWebSocketFunc()
     if syn and type(syn.websocket) == "table" and type(syn.websocket.connect) == "function" then
         return syn.websocket.connect
@@ -585,7 +611,7 @@ local function startNetworkSync()
                 wsConnection.OnMessage:Connect(function(msg)
                     pcall(function()
                         local data = HttpService:JSONDecode(msg)
-                        if type(data) == "table" and data.s == "VR42" and data.u ~= player.UserId then
+                        if type(data) == "table" and data.s == "VR43" and data.u ~= player.UserId then
                             local remotePlr = Players:GetPlayerByUserId(data.u) or (data.un and Players:FindFirstChild(data.un))
                             
                             if not remoteVRUsers[data.u] then
@@ -615,15 +641,16 @@ local function startNetworkSync()
 
                             local hasRoot = remotePlr and remotePlr.Character and remotePlr.Character:FindFirstChild("HumanoidRootPart")
                             if hasRoot and data.lp and data.lr and data.rp and data.rr then
-                                local rootCF = remotePlr.Character.HumanoidRootPart.CFrame
-                                u.TargetL = rootCF * (CFrame.new(unpack(data.lp)) * CFrame.Angles(unpack(data.lr)))
-                                u.TargetR = rootCF * (CFrame.new(unpack(data.rp)) * CFrame.Angles(unpack(data.rr)))
+                                -- Привязка к уровню груди/плеч аватара (НЕ НА ЛИЦО)
+                                local chestCF = remotePlr.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0.25, 0)
+                                u.TargetL = chestCF * (CFrame.new(unpack(data.lp)) * CFrame.Angles(unpack(data.lr)))
+                                u.TargetR = chestCF * (CFrame.new(unpack(data.rp)) * CFrame.Angles(unpack(data.rr)))
                             elseif data.wlp and data.wlr and data.wrp and data.wrr then
                                 u.TargetL = CFrame.new(unpack(data.wlp)) * CFrame.Angles(unpack(data.wlr))
                                 u.TargetR = CFrame.new(unpack(data.wrp)) * CFrame.Angles(unpack(data.wrr))
                             end
 
-                            -- Проверка: хватают ли меня по сети
+                            -- Синхронизация захвата игрока
                             if data.gb and data.gb.target == player.UserId then
                                 beingGrabbedBy = {Grabber = data.u, Hand = data.gb.hand}
                             elseif beingGrabbedBy and beingGrabbedBy.Grabber == data.u then
@@ -684,7 +711,7 @@ if UserInputService.GyroscopeEnabled then
     gyroConnection = UserInputService.DeviceRotationChanged:Connect(function(_, rotCFrame) rawGyroCF = rotCFrame end)
 end
 
--- // 8. ГЛАВНЫЙ ЦИКЛ РЕНДЕРА
+-- // 8. ГЛАВНЫЙ ИГРОВОЙ ЦИКЛ (БЕЗ ТРЯСКИ И ЛАГОВ)
 local function startVR()
     VR_ACTIVE = true
     camera.CameraType = Enum.CameraType.Scriptable
@@ -709,16 +736,19 @@ local function startVR()
     toggleBtn.Text, toggleBtn.TextColor3 = "⏻ ВЫКЛЮЧИТЬ VR", Color3.fromRGB(255, 80, 80)
     cardStroke.Color = Color3.fromRGB(255, 80, 80)
 
+    -- ПЛАВНЫЙ ПОВОРОТ ТЕЛА БЕЗ ДЁРГАНИЙ (ZERO PHYSICS FIGHT)
     physicsLoopConnection = RunService.Stepped:Connect(function()
         pcall(function()
             local curChar = player.Character
             local curRoot = curChar and curChar:FindFirstChild("HumanoidRootPart")
-            if curChar and curRoot and curChar:FindFirstChildOfClass("Humanoid") then
-                curChar:FindFirstChildOfClass("Humanoid").AutoRotate = false
+            local humanoid = curChar and curChar:FindFirstChildOfClass("Humanoid")
+            if curChar and curRoot and humanoid then
+                humanoid.AutoRotate = false
                 local look = camera.CFrame.LookVector
                 local flatLook = Vector3.new(look.X, 0, look.Z)
                 if flatLook.Magnitude > 0.05 then
-                    curRoot.CFrame = curRoot.CFrame:Lerp(CFrame.lookAt(curRoot.Position, curRoot.Position + flatLook.Unit), 0.35)
+                    local targetRot = CFrame.lookAt(Vector3.zero, flatLook.Unit)
+                    curRoot.CFrame = CFrame.new(curRoot.Position) * targetRot
                 end
             end
         end)
@@ -734,7 +764,7 @@ local function startVR()
             local head = curChar:FindFirstChild("Head")
             if not head or not curRoot or not humanoid then return end
 
-            -- Скрытие тела локально
+            -- Скрытие своего тела
             local currentTool = curChar:FindFirstChildOfClass("Tool")
             for _, item in ipairs(curChar:GetDescendants()) do
                 if item:IsA("BasePart") or item:IsA("Decal") then
@@ -759,7 +789,7 @@ local function startVR()
                 end
             end
 
-            -- Вращение камеры
+            -- Камера
             local targetRot
             if CONTROL_MODE == "GYRO" then
                 local rx, ry, rz = baseGyroCF:ToObjectSpace(rawGyroCF):ToEulerAnglesYXZ()
@@ -798,14 +828,15 @@ local function startVR()
 
             local finalLeftCF, finalRightCF = nil, nil
 
+            -- // ИСПРАВЛЕННАЯ ПОЗИЦИЯ: РУКИ ОПУЩЕНЫ ВНИЗ, НЕ В ЛИЦО (Y = -0.85, Z = -1.15)
             local function updateArm(arm, isL, off, tRot, tAlpha, wPitch, wYaw)
                 if not arm then return end
                 local side = isL and -1 or 1
                 local userWrist = CFrame.Angles(wPitch, wYaw, 0)
-                local baseAngle = CFrame.Angles(math.rad(-10 + off.Y * 18 - off.Z * 12), math.rad(-side * 6 + off.X * 16), math.rad(side * 5)) * userWrist
+                local baseAngle = CFrame.Angles(math.rad(-14 + off.Y * 18 - off.Z * 12), math.rad(-side * 8 + off.X * 16), math.rad(side * 6)) * userWrist
                 local finalAngle = baseAngle:Lerp(tRot, tAlpha * 0.8)
 
-                local base = camCF * swayCF * CFrame.new(side * (0.62 - (side * bobX)) + off.X, -0.56 + bobY + off.Y, -1.02 + off.Z) * finalAngle
+                local base = camCF * swayCF * CFrame.new(side * (0.68 - (side * bobX)) + off.X, -0.85 + bobY + off.Y, -1.15 + off.Z) * finalAngle
                 if isL then finalLeftCF = base else finalRightCF = base end
 
                 local f, c, p, ap, fg, sn, th = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("Palm"), arm:FindFirstChild("ArmorPlate"), arm:FindFirstChild("Fingers"), arm:FindFirstChild("Sensors"), arm:FindFirstChild("Thumb")
@@ -823,7 +854,7 @@ local function startVR()
             updateArm(leftArmModel, true, currentHandOffsetL, tapRotL, tapAlphaL, wristPitchL, wristYawL)
             updateArm(rightArmModel, false, currentHandOffsetR, tapRotR, tapAlphaR, wristPitchR, wristYawR)
 
-            -- // НАДЁЖНЫЙ ДВУРУЧНЫЙ ХВАТ ОРУЖИЯ (БЕЗ ДРАК И ВЫЛЕТОВ)
+            -- ДВУРУЧНЫЙ ХВАТ ОРУЖИЯ
             if currentTool then
                 local rightGrip = nil
                 for _, v in ipairs(curChar:GetDescendants()) do 
@@ -852,80 +883,92 @@ local function startVR()
                 end
             end
 
-            -- // ЗАХВАТ ИГРОКОВ (ЛОКАЛЬНЫЙ РЕНДЕР И ПЕРЕМЕЩЕНИЕ)
-            if PLAYER_GRAB_ENABLED then
+            -- // УНИВЕРСАЛЬНЫЙ SANDBOX ХВАТ (ПАРТЫ, МОДЕЛИ, ИГРОКИ, 1 И 2 РУКАМИ)
+            if OBJECT_GRAB_ENABLED then
                 local vrPalmL = leftArmModel and leftArmModel:FindFirstChild("Palm")
                 local vrPalmR = rightArmModel and rightArmModel:FindFirstChild("Palm")
 
-                -- Двуручный захват одного игрока
-                if grabbedPlayerL and grabbedPlayerR and grabbedPlayerL == grabbedPlayerR and vrPalmL and vrPalmR then
-                    local targetChar = grabbedPlayerL.Character
-                    local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
-                    if targetRoot then
-                        local midPos = (vrPalmL.Position + vrPalmR.Position) * 0.5
-                        local aimVector = (vrPalmR.Position - vrPalmL.Position).Unit
-                        local holdCF = CFrame.lookAt(midPos, midPos + camera.CFrame.LookVector) * CFrame.new(0, -0.8, -0.2)
-                        targetRoot.CFrame = targetRoot.CFrame:Lerp(holdCF, 0.35)
-                        targetRoot.AssemblyLinearVelocity = Vector3.zero
+                -- ДВУРУЧНЫЙ ХВАТ ОДНОГО ОБЪЕКТА (КРУТИТЬ В 3D ДВУМЯ РУКАМИ)
+                if grabbedDataL and grabbedDataR and grabbedDataL.Target == grabbedDataR.Target and vrPalmL and vrPalmR then
+                    local targetObj = grabbedDataL
+                    local pL, pR = vrPalmL.Position, vrPalmR.Position
+                    local midPos = (pL + pR) * 0.5
+                    local axisVector = (pR - pL)
+                    
+                    if axisVector.Magnitude > 0.2 and targetObj.Part then
+                        local holdRot = CFrame.lookAt(midPos, midPos + camera.CFrame.LookVector, axisVector.Unit)
+                        local targetCF = holdRot * CFrame.new(0, -0.2, -0.4)
+                        
+                        if targetObj.Type == "PLAYER" then
+                            targetObj.Part.CFrame = targetObj.Part.CFrame:Lerp(targetCF, 0.35)
+                        elseif targetObj.Type == "MODEL" then
+                            targetObj.Target:PivotTo(targetObj.Target:GetPivot():Lerp(targetCF, 0.35))
+                        else
+                            targetObj.Part.CFrame = targetObj.Part.CFrame:Lerp(targetCF, 0.35)
+                        end
+                        targetObj.Part.AssemblyLinearVelocity = Vector3.zero
+                        targetObj.Part.AssemblyAngularVelocity = Vector3.zero
                     end
                 else
-                    -- Одноручный захват левой рукой
-                    if grabbedPlayerL and vrPalmL then
-                        local targetChar = grabbedPlayerL.Character
-                        local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
-                        if targetRoot then
-                            local holdCF = vrPalmL.CFrame * CFrame.new(0, -1.1, -0.4)
-                            targetRoot.CFrame = targetRoot.CFrame:Lerp(holdCF, 0.35)
-                            targetRoot.AssemblyLinearVelocity = Vector3.zero
+                    -- ОДНОРУЧНЫЙ ХВАТ ЛЕВОЙ РУКОЙ
+                    if grabbedDataL and vrPalmL and grabbedDataL.Part then
+                        local holdCF = vrPalmL.CFrame * CFrame.new(0, -0.5, -0.4)
+                        if grabbedDataL.Type == "PLAYER" then
+                            grabbedDataL.Part.CFrame = grabbedDataL.Part.CFrame:Lerp(holdCF, 0.35)
+                        elseif grabbedDataL.Type == "MODEL" then
+                            grabbedDataL.Target:PivotTo(grabbedDataL.Target:GetPivot():Lerp(holdCF, 0.35))
                         else
-                            grabbedPlayerL = nil
+                            grabbedDataL.Part.CFrame = grabbedDataL.Part.CFrame:Lerp(holdCF, 0.35)
                         end
+                        grabbedDataL.Part.AssemblyLinearVelocity = Vector3.zero
+                        grabbedDataL.Part.AssemblyAngularVelocity = Vector3.zero
                     end
 
-                    -- Одноручный захват правой рукой
-                    if grabbedPlayerR and vrPalmR then
-                        local targetChar = grabbedPlayerR.Character
-                        local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
-                        if targetRoot then
-                            local holdCF = vrPalmR.CFrame * CFrame.new(0, -1.1, -0.4)
-                            targetRoot.CFrame = targetRoot.CFrame:Lerp(holdCF, 0.35)
-                            targetRoot.AssemblyLinearVelocity = Vector3.zero
+                    -- ОДНОРУЧНЫЙ ХВАТ ПРАВОЙ РУКОЙ
+                    if grabbedDataR and vrPalmR and grabbedDataR.Part then
+                        local holdCF = vrPalmR.CFrame * CFrame.new(0, -0.5, -0.4)
+                        if grabbedDataR.Type == "PLAYER" then
+                            grabbedDataR.Part.CFrame = grabbedDataR.Part.CFrame:Lerp(holdCF, 0.35)
+                        elseif grabbedDataR.Type == "MODEL" then
+                            grabbedDataR.Target:PivotTo(grabbedDataR.Target:GetPivot():Lerp(holdCF, 0.35))
                         else
-                            grabbedPlayerR = nil
+                            grabbedDataR.Part.CFrame = grabbedDataR.Part.CFrame:Lerp(holdCF, 0.35)
                         end
+                        grabbedDataR.Part.AssemblyLinearVelocity = Vector3.zero
+                        grabbedDataR.Part.AssemblyAngularVelocity = Vector3.zero
                     end
                 end
             end
 
-            -- Если меня схватил другой VR-игрок по сети
+            -- Синхронизация: если меня схватил другой VR игрок
             if beingGrabbedBy and remoteVRUsers[beingGrabbedBy.Grabber] then
                 local grabberData = remoteVRUsers[beingGrabbedBy.Grabber]
                 local grabCF = (beingGrabbedBy.Hand == "L") and grabberData.CurrentL or grabberData.CurrentR
                 if grabCF and curRoot then
-                    curRoot.CFrame = curRoot.CFrame:Lerp(grabCF * CFrame.new(0, -1.1, -0.4), 0.35)
+                    curRoot.CFrame = curRoot.CFrame:Lerp(grabCF * CFrame.new(0, -1.0, -0.4), 0.35)
                     curRoot.AssemblyLinearVelocity = Vector3.zero
                 end
             end
 
-            -- Отправка сетевых пакетов (Включая данные захвата)
+            -- Отправка пакетов (Относительно груди/плеч)
             if NETWORK_ENABLED and wsConnection and tick() - lastNetSend > 0.05 and finalLeftCF and finalRightCF then
                 lastNetSend = tick()
                 pcall(function()
-                    local rootCF = curRoot.CFrame
-                    local relL = rootCF:ToObjectSpace(finalLeftCF)
-                    local relR = rootCF:ToObjectSpace(finalRightCF)
+                    local chestCF = curRoot.CFrame * CFrame.new(0, 0.25, 0)
+                    local relL = chestCF:ToObjectSpace(finalLeftCF)
+                    local relR = chestCF:ToObjectSpace(finalRightCF)
 
                     local grabPacket = nil
-                    if grabbedPlayerL and grabbedPlayerR and grabbedPlayerL == grabbedPlayerR then
-                        grabPacket = {target = grabbedPlayerL.UserId, hand = "BOTH"}
-                    elseif grabbedPlayerL then
-                        grabPacket = {target = grabbedPlayerL.UserId, hand = "L"}
-                    elseif grabbedPlayerR then
-                        grabPacket = {target = grabbedPlayerR.UserId, hand = "R"}
+                    if grabbedDataL and grabbedDataL.Type == "PLAYER" and grabbedDataR and grabbedDataR.Type == "PLAYER" and grabbedDataL.Target == grabbedDataR.Target then
+                        grabPacket = {target = grabbedDataL.Target.UserId, hand = "BOTH"}
+                    elseif grabbedDataL and grabbedDataL.Type == "PLAYER" then
+                        grabPacket = {target = grabbedDataL.Target.UserId, hand = "L"}
+                    elseif grabbedDataR and grabbedDataR.Type == "PLAYER" then
+                        grabPacket = {target = grabbedDataR.Target.UserId, hand = "R"}
                     end
 
                     local packet = {
-                        s = "VR42",
+                        s = "VR43",
                         u = player.UserId,
                         un = player.Name,
                         st = HAND_STYLE,
@@ -979,7 +1022,7 @@ local function stopVR()
         VR_ACTIVE = false
         dpadContainer.Visible, handContL.Visible, handContR.Visible = false, false, false
         moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
-        grabbedPlayerL, grabbedPlayerR = nil, nil
+        grabbedDataL, grabbedDataR = nil, nil
 
         if mainLoopConnection then mainLoopConnection:Disconnect() mainLoopConnection = nil end
         if physicsLoopConnection then physicsLoopConnection:Disconnect() physicsLoopConnection = nil end
@@ -1035,11 +1078,11 @@ twoHandBtn.Activated:Connect(function()
 end)
 
 grabToggleBtn.Activated:Connect(function()
-    PLAYER_GRAB_ENABLED = not PLAYER_GRAB_ENABLED
-    grabToggleBtn.Text = PLAYER_GRAB_ENABLED and "🤼 ХВАТ ИГРОКОВ: ВКЛ" or "🤼 ХВАТ ИГРОКОВ: ВЫКЛ"
-    grabToggleBtn.TextColor3 = PLAYER_GRAB_ENABLED and Color3.fromRGB(255, 80, 120) or Color3.fromRGB(180, 180, 190)
-    if not PLAYER_GRAB_ENABLED then
-        grabbedPlayerL, grabbedPlayerR = nil, nil
+    OBJECT_GRAB_ENABLED = not OBJECT_GRAB_ENABLED
+    grabToggleBtn.Text = OBJECT_GRAB_ENABLED and "🖐️ ХВАТ ПРЕДМЕТОВ: ВКЛ" or "🖐️ ХВАТ ПРЕДМЕТОВ: ВЫКЛ"
+    grabToggleBtn.TextColor3 = OBJECT_GRAB_ENABLED and Color3.fromRGB(255, 80, 120) or Color3.fromRGB(180, 180, 190)
+    if not OBJECT_GRAB_ENABLED then
+        grabbedDataL, grabbedDataR = nil, nil
     end
 end)
 
