@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v48.0 OMEGA (GESTURE TOUCH SYSTEM & EXPANDED CONTROL)
+-- // 👑 LUXURY VR ENGINE v48.1 OMEGA (TOUCH CAMERA FIX & SMART SCREEN ZONING)
 
 -- ==============================================================================
 -- 🚀 ТВОЙ ЛИЧНЫЙ ПРИВАТНЫЙ WEBSOCKET СЕРВЕР:
@@ -32,7 +32,7 @@ local NETWORK_ENABLED = true
 local TWO_HAND_MODE = false
 local OBJECT_GRAB_ENABLED = true
 local CONTROL_MODE = "TOUCH"
-local HAND_INPUT_MODE = "DEFAULT" -- "DEFAULT" (зеленые джойстики) или "SCREEN_DRAG" (водить по экрану)
+local HAND_INPUT_MODE = "DEFAULT" -- "DEFAULT" (джойстики) или "SCREEN_DRAG" (водить по экрану)
 local HAND_STYLE = 1
 local FOV_MODES = {75, 90, 110}
 local FOV_INDEX = 2
@@ -58,7 +58,8 @@ local viewmodelFolder, leftArmModel, rightArmModel = nil, nil, nil
 local moveFrameL, moveFrameR = nil, nil
 local mainLoopConnection, physicsLoopConnection, gyroConnection, heartbeatThread = nil, nil, nil, nil
 
--- Тач-управление по экрану (Жесты)
+-- Тач-управление (Камера + Жесты)
+local camTouchInput, camTouchLastPos = nil, nil
 local screenTouchL, screenTouchLStart = nil, nil
 local screenTouchR, screenTouchRStart = nil, nil
 
@@ -270,7 +271,7 @@ makeFreeDraggable(mainCard, dragHandle)
 
 local title = Instance.new("TextLabel", dragHandle)
 title.Size, title.Position = UDim2.new(1, 0, 0, 20), UDim2.new(0, 14, 0, 5)
-title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v48 (MASTER)"
+title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v48.1 (MASTER)"
 title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 12
 title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -359,8 +360,6 @@ local netToggleBtn  = makeHubBtn("🌐 СЕТЬ: ВКЛЮЧЕНА", UDim2.new(0,
 local crouchBtn     = makeHubBtn("🧎 ПРИСЕСТЬ", UDim2.new(0, 182, 0, 159), Color3.fromRGB(18, 20, 26), Color3.fromRGB(180, 220, 255))
 local uiEditBtn     = makeHubBtn("📍 РЕДАКТОР ИНТЕРФЕЙСА", UDim2.new(0, 12, 0, 196), Color3.fromRGB(18, 25, 35), Color3.fromRGB(0, 200, 255))
 local calibBtn      = makeHubBtn("🎯 ЦЕНТР КАМЕРЫ", UDim2.new(0, 182, 0, 196), Color3.fromRGB(18, 20, 26), Color3.fromRGB(200, 200, 220))
-
--- Новая кнопка переключения управления руками
 local handCtrlBtn   = makeHubBtn("🕹️ ДЖОЙСТИК: ПО УМОЛЧ.", UDim2.new(0, 12, 0, 233), Color3.fromRGB(18, 28, 30), Color3.fromRGB(0, 255, 200))
 local resetDistBtn  = makeHubBtn("📏 СБРОС ЗУМА (4м)", UDim2.new(0, 182, 0, 233), Color3.fromRGB(24, 20, 36), Color3.fromRGB(220, 180, 255))
 
@@ -866,28 +865,42 @@ local function startNetworkSync()
     end)
 end
 
--- // 7. ВВОД КАМЕРЫ, ТАПЫ И СЕНСОРНЫЙ РЕЖИМ (ЖЕСТЫ)
+-- // 7. ВВОД КАМЕРЫ, ТАПЫ И СЕНСОРНЫЙ РЕЖИМ (ЗОНИРОВАНИЕ)
 UserInputService.InputBegan:Connect(function(input, processed)
     if not VR_ACTIVE or EDITING_UI then return end
-
-    -- Если нажатие пришлось на GUI (кнопки, чат, контроллеры) - не трогаем жесты
     if processed then return end
 
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         local vpSize = camera.ViewportSize
+        local isUpperHalf = input.Position.Y < (vpSize.Y * 0.48)
         local isLeftSide = input.Position.X < (vpSize.X * 0.5)
 
         if HAND_INPUT_MODE == "SCREEN_DRAG" then
-            -- Режим "Водить по экрану"
-            if isLeftSide and not screenTouchL then
-                screenTouchL = input
-                screenTouchLStart = input.Position
-            elseif not isLeftSide and not screenTouchR then
-                screenTouchR = input
-                screenTouchRStart = input.Position
+            -- В РЕЖИМЕ ЖЕСТОВ:
+            if isUpperHalf then
+                -- Верхняя половина экрана: Вращение камеры
+                if not camTouchInput then
+                    camTouchInput = input
+                    camTouchLastPos = Vector2.new(input.Position.X, input.Position.Y)
+                end
+            else
+                -- Нижняя половина экрана: Управление руками
+                if isLeftSide and not screenTouchL then
+                    screenTouchL = input
+                    screenTouchLStart = input.Position
+                elseif not isLeftSide and not screenTouchR then
+                    screenTouchR = input
+                    screenTouchRStart = input.Position
+                end
             end
         else
-            -- Режим по умолчанию (Тап-направление)
+            -- В РЕЖИМЕ ПО УМОЛЧАНИЮ:
+            if input.Position.X > (vpSize.X * 0.30) and not camTouchInput then
+                camTouchInput = input
+                camTouchLastPos = Vector2.new(input.Position.X, input.Position.Y)
+            end
+
+            -- Тап-прицеливание руками
             local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
             local localDir = camera.CFrame:VectorToObjectSpace(ray.Direction).Unit
             local aimRot = CFrame.lookAt(Vector3.zero, localDir)
@@ -903,7 +916,17 @@ end)
 UserInputService.InputChanged:Connect(function(input, processed)
     if not VR_ACTIVE or EDITING_UI then return end
 
-    -- 1. Обработка жестов ведения по экрану
+    -- 1. Абсолютно надежный поворот камеры
+    if input == camTouchInput and camTouchLastPos then
+        local curPos = Vector2.new(input.Position.X, input.Position.Y)
+        local d = curPos - camTouchLastPos
+        camTouchLastPos = curPos
+
+        touchYaw = touchYaw - d.X * (0.0035 * SENS_MULTIPLIER)
+        touchPitch = math.clamp(touchPitch - d.Y * (0.0035 * SENS_MULTIPLIER), math.rad(-75), math.rad(75))
+    end
+
+    -- 2. Обработка жестов ведения рук по экрану
     if HAND_INPUT_MODE == "SCREEN_DRAG" then
         if input == screenTouchL and screenTouchLStart then
             local delta = input.Position - screenTouchLStart
@@ -921,23 +944,12 @@ UserInputService.InputChanged:Connect(function(input, processed)
             )
         end
     end
-
-    -- 2. Вращение камеры пальцем
-    if (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) and not processed then
-        -- Если активен режим жестов, правый тач не двигает камеру, чтобы не сбивать хват
-        if HAND_INPUT_MODE == "SCREEN_DRAG" and input == screenTouchR then return end
-
-        if input.Position.X > camera.ViewportSize.X * 0.35 then
-            local delta = input.Delta
-            if delta.Magnitude > 0 then
-                touchYaw = touchYaw - delta.X * (0.0035 * SENS_MULTIPLIER)
-                touchPitch = math.clamp(touchPitch - delta.Y * (0.0035 * SENS_MULTIPLIER), math.rad(-75), math.rad(75))
-            end
-        end
-    end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
+    if input == camTouchInput then
+        camTouchInput, camTouchLastPos = nil, nil
+    end
     if input == screenTouchL then
         screenTouchL, screenTouchLStart = nil, nil
         handDragL = Vector3.zero
@@ -1275,6 +1287,7 @@ local function stopVR()
         end
         moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
         grabbedDataL, grabbedDataR = nil, nil
+        camTouchInput, camTouchLastPos = nil, nil
         screenTouchL, screenTouchR = nil, nil
         handDragL, handDragR = Vector3.zero, Vector3.zero
 
