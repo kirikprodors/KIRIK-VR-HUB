@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v47.0 OMEGA (CLEAN UI INSPECTOR, TRANSPARENCY FIX & PERFECT SANDBOX)
+-- // 👑 LUXURY VR ENGINE v48.0 OMEGA (GESTURE TOUCH SYSTEM & EXPANDED CONTROL)
 
 -- ==============================================================================
 -- 🚀 ТВОЙ ЛИЧНЫЙ ПРИВАТНЫЙ WEBSOCKET СЕРВЕР:
@@ -17,10 +17,12 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 -- // 1. ОЧИСТКА ПРЕДЫДУЩИХ ВЕРСИЙ
-local GUI_NAME = "LuxuryVR_V47_Master"
+local GUI_NAME = "LuxuryVR_V48_Master"
 pcall(function()
     if CoreGui:FindFirstChild(GUI_NAME) then CoreGui[GUI_NAME]:Destroy() end
     if player.PlayerGui:FindFirstChild(GUI_NAME) then player.PlayerGui[GUI_NAME]:Destroy() end
+    if CoreGui:FindFirstChild("LuxuryVR_V47_Master") then CoreGui["LuxuryVR_V47_Master"]:Destroy() end
+    if player.PlayerGui:FindFirstChild("LuxuryVR_V47_Master") then player.PlayerGui["LuxuryVR_V47_Master"]:Destroy() end
 end)
 
 -- // 2. СОСТОЯНИЯ И НАСТРОЙКИ
@@ -30,6 +32,7 @@ local NETWORK_ENABLED = true
 local TWO_HAND_MODE = false
 local OBJECT_GRAB_ENABLED = true
 local CONTROL_MODE = "TOUCH"
+local HAND_INPUT_MODE = "DEFAULT" -- "DEFAULT" (зеленые джойстики) или "SCREEN_DRAG" (водить по экрану)
 local HAND_STYLE = 1
 local FOV_MODES = {75, 90, 110}
 local FOV_INDEX = 2
@@ -52,7 +55,12 @@ local touchYaw, touchPitch = 0, 0
 local rawGyroCF, baseGyroCF, smoothedCamRot = CFrame.identity, CFrame.identity, CFrame.identity
 
 local viewmodelFolder, leftArmModel, rightArmModel = nil, nil, nil
+local moveFrameL, moveFrameR = nil, nil
 local mainLoopConnection, physicsLoopConnection, gyroConnection, heartbeatThread = nil, nil, nil, nil
+
+-- Тач-управление по экрану (Жесты)
+local screenTouchL, screenTouchLStart = nil, nil
+local screenTouchR, screenTouchRStart = nil, nil
 
 local handDragL, handDragR = Vector3.zero, Vector3.zero
 local currentHandOffsetL, currentHandOffsetR = Vector3.zero, Vector3.zero
@@ -122,7 +130,7 @@ local function makeFreeDraggable(frame, handle)
     end)
 end
 
--- // НОВАЯ ЧЕТКАЯ ПАНЕЛЬ ИНСПЕКТОРА (ВЕРХ ЭКРАНА)
+-- ИНСПЕКТОР UI
 local editInspector = Instance.new("Frame", screenGui)
 editInspector.Size = UDim2.new(0, 360, 0, 54)
 editInspector.Position = UDim2.new(0.5, -180, 0, 48)
@@ -172,7 +180,6 @@ Instance.new("UICorner", resetScaleBtn).CornerRadius = UDim.new(0, 8)
 local rStrk = Instance.new("UIStroke", resetScaleBtn)
 rStrk.Color = Color3.fromRGB(200, 150, 255)
 
--- Функция регистрации элементов
 local function registerEditableWidget(key, name, frame, baseSize, defaultTrans, updateFn)
     local stroke = Instance.new("UIStroke", frame)
     stroke.Thickness, stroke.Color, stroke.Enabled = 2, Color3.fromRGB(0, 255, 255), false
@@ -263,7 +270,7 @@ makeFreeDraggable(mainCard, dragHandle)
 
 local title = Instance.new("TextLabel", dragHandle)
 title.Size, title.Position = UDim2.new(1, 0, 0, 20), UDim2.new(0, 14, 0, 5)
-title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v47 (MASTER)"
+title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v48 (MASTER)"
 title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 12
 title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -352,8 +359,10 @@ local netToggleBtn  = makeHubBtn("🌐 СЕТЬ: ВКЛЮЧЕНА", UDim2.new(0,
 local crouchBtn     = makeHubBtn("🧎 ПРИСЕСТЬ", UDim2.new(0, 182, 0, 159), Color3.fromRGB(18, 20, 26), Color3.fromRGB(180, 220, 255))
 local uiEditBtn     = makeHubBtn("📍 РЕДАКТОР ИНТЕРФЕЙСА", UDim2.new(0, 12, 0, 196), Color3.fromRGB(18, 25, 35), Color3.fromRGB(0, 200, 255))
 local calibBtn      = makeHubBtn("🎯 ЦЕНТР КАМЕРЫ", UDim2.new(0, 182, 0, 196), Color3.fromRGB(18, 20, 26), Color3.fromRGB(200, 200, 220))
-local resetDistBtn  = makeHubBtn("📏 СБРОС ЗУМА (4м)", UDim2.new(0, 12, 0, 233), Color3.fromRGB(24, 20, 36), Color3.fromRGB(220, 180, 255))
-resetDistBtn.Size = UDim2.new(0, 326, 0, 32)
+
+-- Новая кнопка переключения управления руками
+local handCtrlBtn   = makeHubBtn("🕹️ ДЖОЙСТИК: ПО УМОЛЧ.", UDim2.new(0, 12, 0, 233), Color3.fromRGB(18, 28, 30), Color3.fromRGB(0, 255, 200))
+local resetDistBtn  = makeHubBtn("📏 СБРОС ЗУМА (4м)", UDim2.new(0, 182, 0, 233), Color3.fromRGB(24, 20, 36), Color3.fromRGB(220, 180, 255))
 
 -- // 4. НЕЗАВИСИМЫЕ КОНТРОЛЛЕРЫ
 local dpadContainer = Instance.new("Frame", screenGui)
@@ -453,6 +462,8 @@ local function createIndependentHandPad(isLeft)
     Instance.new("UICorner", moveFrame).CornerRadius = UDim.new(1, 0)
     local mStroke = Instance.new("UIStroke", moveFrame)
     mStroke.Thickness, mStroke.Color = 1.6, Color3.fromRGB(0, 255, 180)
+
+    if isLeft then moveFrameL = moveFrame else moveFrameR = moveFrame end
 
     local moveKnob = Instance.new("Frame", moveFrame)
     moveKnob.Size = UDim2.new(0, 30, 0, 30)
@@ -562,16 +573,16 @@ local function createIndependentHandPad(isLeft)
         end
     end)
 
-    -- Слушатель Движения
+    -- Слушатель Движения (Джойстик)
     local moveInput, mStartPos = nil, nil
     moveFrame.InputBegan:Connect(function(i)
-        if not EDITING_UI and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1) then
+        if not EDITING_UI and HAND_INPUT_MODE == "DEFAULT" and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1) then
             moveInput, mStartPos = i, i.Position
             mStroke.Color = Color3.fromRGB(0, 255, 255)
         end
     end)
     UserInputService.InputChanged:Connect(function(i)
-        if moveInput and i == moveInput and not EDITING_UI then
+        if moveInput and i == moveInput and not EDITING_UI and HAND_INPUT_MODE == "DEFAULT" then
             local delta = i.Position - mStartPos
             local scale = widgetRegistry["MOVE_" .. side].Scale or 1.0
             local maxOffset = 30 * scale
@@ -634,7 +645,14 @@ end
 createIndependentHandPad(true)
 createIndependentHandPad(false)
 
--- // 5. АНАТОМИЯ РУК (15 УЛЬТРА-ДЕТАЛИЗИРОВАННЫХ СКИcolumns)
+-- Обновление видимости зеленых джойстиков
+local function refreshMovementJoysticksVisibility()
+    local shouldShow = VR_ACTIVE and (HAND_INPUT_MODE == "DEFAULT" or EDITING_UI)
+    if moveFrameL then moveFrameL.Visible = shouldShow end
+    if moveFrameR then moveFrameR.Visible = shouldShow end
+end
+
+-- // 5. АНАТОМИЯ РУК
 local function applyStyleToModel(model, styleIndex, targetPlayer)
     local st = STYLES[styleIndex or 1]
     local baseCol = st.Col
@@ -848,24 +866,67 @@ local function startNetworkSync()
     end)
 end
 
--- // 7. ВВОД КАМЕРЫ И ТАПЫ
+-- // 7. ВВОД КАМЕРЫ, ТАПЫ И СЕНСОРНЫЙ РЕЖИМ (ЖЕСТЫ)
 UserInputService.InputBegan:Connect(function(input, processed)
-    if not VR_ACTIVE or processed or EDITING_UI then return end
+    if not VR_ACTIVE or EDITING_UI then return end
+
+    -- Если нажатие пришлось на GUI (кнопки, чат, контроллеры) - не трогаем жесты
+    if processed then return end
+
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
-        local localDir = camera.CFrame:VectorToObjectSpace(ray.Direction).Unit
-        local aimRot = CFrame.lookAt(Vector3.zero, localDir)
-        if input.Position.X < camera.ViewportSize.X * 0.5 then
-            tapReachL, tapRotL, tapAlphaL = localDir * 1.3, aimRot, 1
+        local vpSize = camera.ViewportSize
+        local isLeftSide = input.Position.X < (vpSize.X * 0.5)
+
+        if HAND_INPUT_MODE == "SCREEN_DRAG" then
+            -- Режим "Водить по экрану"
+            if isLeftSide and not screenTouchL then
+                screenTouchL = input
+                screenTouchLStart = input.Position
+            elseif not isLeftSide and not screenTouchR then
+                screenTouchR = input
+                screenTouchRStart = input.Position
+            end
         else
-            tapReachR, tapRotR, tapAlphaR = localDir * 1.3, aimRot, 1
+            -- Режим по умолчанию (Тап-направление)
+            local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
+            local localDir = camera.CFrame:VectorToObjectSpace(ray.Direction).Unit
+            local aimRot = CFrame.lookAt(Vector3.zero, localDir)
+            if isLeftSide then
+                tapReachL, tapRotL, tapAlphaL = localDir * 1.3, aimRot, 1
+            else
+                tapReachR, tapRotR, tapAlphaR = localDir * 1.3, aimRot, 1
+            end
         end
     end
 end)
 
 UserInputService.InputChanged:Connect(function(input, processed)
     if not VR_ACTIVE or EDITING_UI then return end
-    if (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+
+    -- 1. Обработка жестов ведения по экрану
+    if HAND_INPUT_MODE == "SCREEN_DRAG" then
+        if input == screenTouchL and screenTouchLStart then
+            local delta = input.Position - screenTouchLStart
+            handDragL = Vector3.new(
+                math.clamp(delta.X / 55, -0.9, 0.9),
+                math.clamp(-delta.Y / 55, -0.9, 0.9),
+                -math.clamp(delta.Magnitude / 35, 0, 1.5)
+            )
+        elseif input == screenTouchR and screenTouchRStart then
+            local delta = input.Position - screenTouchRStart
+            handDragR = Vector3.new(
+                math.clamp(delta.X / 55, -0.9, 0.9),
+                math.clamp(-delta.Y / 55, -0.9, 0.9),
+                -math.clamp(delta.Magnitude / 35, 0, 1.5)
+            )
+        end
+    end
+
+    -- 2. Вращение камеры пальцем
+    if (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) and not processed then
+        -- Если активен режим жестов, правый тач не двигает камеру, чтобы не сбивать хват
+        if HAND_INPUT_MODE == "SCREEN_DRAG" and input == screenTouchR then return end
+
         if input.Position.X > camera.ViewportSize.X * 0.35 then
             local delta = input.Delta
             if delta.Magnitude > 0 then
@@ -873,6 +934,17 @@ UserInputService.InputChanged:Connect(function(input, processed)
                 touchPitch = math.clamp(touchPitch - delta.Y * (0.0035 * SENS_MULTIPLIER), math.rad(-75), math.rad(75))
             end
         end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input == screenTouchL then
+        screenTouchL, screenTouchLStart = nil, nil
+        handDragL = Vector3.zero
+    end
+    if input == screenTouchR then
+        screenTouchR, screenTouchRStart = nil, nil
+        handDragR = Vector3.zero
     end
 end)
 
@@ -888,6 +960,7 @@ local function startVR()
     for _, w in pairs(widgetRegistry) do
         w.Frame.Visible = true
     end
+    refreshMovementJoysticksVisibility()
 
     local char = player.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -1056,7 +1129,7 @@ local function startVR()
                 end
             end
 
-            -- // УНИВЕРСАЛЬНЫЙ SANDBOX ХВАТ С ЗУМОМ И 3D-КРУЧЕНИЕМ
+            -- // УНИВЕРСАЛЬНЫЙ SANDBOX ХВАТ
             if OBJECT_GRAB_ENABLED then
                 local vrPalmL = leftArmModel and leftArmModel:FindFirstChild("Palm")
                 local vrPalmR = rightArmModel and rightArmModel:FindFirstChild("Palm")
@@ -1123,7 +1196,7 @@ local function startVR()
                 end
             end
 
-            -- // ОТПРАВКА В СЕТЬ (ОТ ПЛЕЧ АВАТАРА)
+            -- // ОТПРАВКА В СЕТЬ
             if NETWORK_ENABLED and wsConnection and tick() - lastNetSend > 0.05 and finalLeftCF and finalRightCF then
                 lastNetSend = tick()
                 pcall(function()
@@ -1161,7 +1234,7 @@ local function startVR()
                 end)
             end
 
-            -- Плавная интерполяция 60 FPS
+            -- Плавная интерполяция удаленных игроков
             for uId, uData in pairs(remoteVRUsers) do
                 if tick() - uData.LastTick > 6 then
                     if uData.Folder then uData.Folder:Destroy() end
@@ -1202,6 +1275,8 @@ local function stopVR()
         end
         moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
         grabbedDataL, grabbedDataR = nil, nil
+        screenTouchL, screenTouchR = nil, nil
+        handDragL, handDragR = Vector3.zero, Vector3.zero
 
         if mainLoopConnection then mainLoopConnection:Disconnect() mainLoopConnection = nil end
         if physicsLoopConnection then physicsLoopConnection:Disconnect() physicsLoopConnection = nil end
@@ -1225,10 +1300,24 @@ local function stopVR()
     end)
 end
 
--- // 9. НАДЕЖНЫЕ ОБРАБОТЧИКИ НАЖАТИЙ (ACTIVATED)
+-- // 9. ОБРАБОТЧИКИ НАЖАТИЙ (ACTIVATED)
 
 toggleBtn.Activated:Connect(function() 
     if VR_ACTIVE then stopVR() else startVR() end 
+end)
+
+-- Переключение режима управления руками (джойстики / водить по экрану)
+handCtrlBtn.Activated:Connect(function()
+    if HAND_INPUT_MODE == "DEFAULT" then
+        HAND_INPUT_MODE = "SCREEN_DRAG"
+        handCtrlBtn.Text = "📱 ДЖОЙСТИК: ПО ЭКРАНУ"
+        handCtrlBtn.TextColor3 = Color3.fromRGB(0, 255, 255)
+    else
+        HAND_INPUT_MODE = "DEFAULT"
+        handCtrlBtn.Text = "🕹️ ДЖОЙСТИК: ПО УМОЛЧ."
+        handCtrlBtn.TextColor3 = Color3.fromRGB(0, 255, 200)
+    end
+    refreshMovementJoysticksVisibility()
 end)
 
 modeBtn.Activated:Connect(function()
@@ -1267,7 +1356,7 @@ resetDistBtn.Activated:Connect(function()
     task.delay(0.4, function() resetDistBtn.Text = "📏 СБРОС ЗУМА (4м)" end)
 end)
 
--- РЕЖИМ РЕДАКТОРА С ФИКСИРОВАННОЙ ПРОЗРАЧНОСТЬЮ
+-- РЕЖИМ РЕДАКТОРА
 uiEditBtn.Activated:Connect(function()
     EDITING_UI = not EDITING_UI
     editInspector.Visible = EDITING_UI
@@ -1275,9 +1364,9 @@ uiEditBtn.Activated:Connect(function()
     for _, w in pairs(widgetRegistry) do
         w.Stroke.Enabled = EDITING_UI
         w.Stroke.Color = Color3.fromRGB(0, 255, 255)
-        -- Восстанавливаем точную прозрачность без тёмных пятен
         w.Frame.BackgroundTransparency = EDITING_UI and 0.45 or w.DefaultTrans
     end
+    refreshMovementJoysticksVisibility()
 
     uiEditBtn.Text = EDITING_UI and "💾 СОХРАНИТЬ ИНТЕРФЕЙС" or "📍 РЕДАКТОР ИНТЕРФЕЙСА"
     uiEditBtn.TextColor3 = EDITING_UI and Color3.fromRGB(0, 255, 140) or Color3.fromRGB(0, 200, 255)
