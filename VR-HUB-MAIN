@@ -1,21 +1,13 @@
--- // 👑 LUXURY VR ENGINE v58.0 OMEGA (ANTI-FLING, VEHICLE COMPATIBILITY & CLEAN HUD)
-
--- ==============================================================================
--- 🚀 ТВОЙ ЛИЧНЫЙ ПРИВАТНЫЙ WEBSOCKET СЕРВЕР:
+-- // 👑 LUXURY VR ENGINE v59.0 OMEGA (EMOTES SYSTEM & SIGMA MEWING EDITION)
 local MY_PRIVATE_WS_URL = "wss://free.blr2.piesocket.com/v3/24470?api_key=KLWIgZUHZUa4PPTGni5DfOcnz9MAOrGrE3bHpEdV&notify_self=0"
--- ==============================================================================
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
-
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
-
--- // 1. ОЧИСТКА ПРЕДЫДУЩИХ ВЕРСИЙ
 local GUI_NAME = "LuxuryVR_V58_Master"
 pcall(function()
     for _, name in ipairs({"LuxuryVR_V58_Master", "LuxuryVR_V57_Master", "LuxuryVR_V56_Master", "LuxuryVR_V55_Master", "LuxuryVR_V54_Master", "LuxuryVR_V53_Master"}) do
@@ -26,22 +18,17 @@ pcall(function()
         if f.Name:sub(1, 9) == "RemoteVR_" or f.Name == "VR_Rig" then f:Destroy() end
     end
 end)
-
--- // МАТЕМАТИЧЕСКАЯ ЗАЩИТА
 local function isNaN(n) return n ~= n end
-
 local function safeVec3(v, fallback)
     fallback = fallback or Vector3.zero
     if not v or isNaN(v.X) or isNaN(v.Y) or isNaN(v.Z) then return fallback end
     return v
 end
-
 local function safeUnit(v, fallback)
     fallback = fallback or Vector3.new(0, 0, -1)
     if not v or isNaN(v.X) or isNaN(v.Y) or isNaN(v.Z) or v.Magnitude < 1e-4 then return fallback end
     return v.Unit
 end
-
 local function safeLookAt(eye, target, fallbackDir)
     fallbackDir = fallbackDir or Vector3.new(0, 0, -1)
     eye = safeVec3(eye, Vector3.zero)
@@ -50,24 +37,19 @@ local function safeLookAt(eye, target, fallbackDir)
     if dir.Magnitude < 1e-4 or isNaN(dir.X) then dir = fallbackDir end
     return CFrame.lookAt(eye, eye + dir.Unit)
 end
-
--- // 2. АНАТОМИЧЕСКИЕ ПРЕСЕТЫ ЖЕСТОВ
 local GESTURES = {
     {Name = "РАССЛАБЛЕНА", Icon = "🖐️", Curls = {0.12, 0.12, 0.12, 0.12, 0.12}},
-    {Name = "КУЛАК",       Icon = "✊", Curls = {1.0, 1.0, 1.0, 1.0, 1.0}},
-    {Name = "УКАЗАТЬ",     Icon = "👆", Curls = {0.95, 0.0, 1.0, 1.0, 1.0}},
-    {Name = "МИР / V",     Icon = "✌️", Curls = {0.95, 0.0, 0.0, 1.0, 1.0}},
-    {Name = "ЛАЙК",        Icon = "👍", Curls = {0.0, 1.0, 1.0, 1.0, 1.0}},
-    {Name = "ЩИПОК",       Icon = "🤏", Curls = {0.65, 0.70, 0.15, 0.15, 0.15}},
-    {Name = "РОК",         Icon = "🤘", Curls = {0.85, 0.0, 1.0, 1.0, 0.0}}
+    {Name = "КУЛАК", Icon = "✊", Curls = {1.0, 1.0, 1.0, 1.0, 1.0}},
+    {Name = "УКАЗАТЬ", Icon = "👆", Curls = {0.95, 0.0, 1.0, 1.0, 1.0}},
+    {Name = "МИР / V", Icon = "✌️", Curls = {0.95, 0.0, 0.0, 1.0, 1.0}},
+    {Name = "ЛАЙК", Icon = "👍", Curls = {0.0, 1.0, 1.0, 1.0, 1.0}},
+    {Name = "ЩИПОК", Icon = "🤏", Curls = {0.65, 0.70, 0.15, 0.15, 0.15}},
+    {Name = "РОК", Icon = "🤘", Curls = {0.85, 0.0, 1.0, 1.0, 0.0}}
 }
-
 local gestureIndexL = 1
 local gestureIndexR = 1
 local currentCurlsL = {0.12, 0.12, 0.12, 0.12, 0.12}
 local currentCurlsR = {0.12, 0.12, 0.12, 0.12, 0.12}
-
--- // 3. СОСТОЯНИЯ И НАСТРОЙКИ
 local VR_ACTIVE = false
 local EDITING_UI = false
 local NETWORK_ENABLED = true
@@ -81,39 +63,28 @@ local FOV_MODES = {75, 90, 110}
 local FOV_INDEX = 2
 local SENS_MULTIPLIER = 1.3
 local IS_CROUCHING = false
-
--- Дистанция удержания
 local grabDistL = 4.0
 local grabDistR = 4.0
 local grabDistBoth = 5.5
-
--- Хват и Карабкание
 local grabbedDataL = nil
 local grabbedDataR = nil
 local beingGrabbedBy = nil
-
 local MAX_CLIMB_REACH = 4.8
 local isClimbingL, isClimbingR = false, false
 local climbAnchorPosL, climbAnchorPosR = nil, nil
 local wallNormalL, wallNormalR = Vector3.new(0, 0, 1), Vector3.new(0, 0, 1)
 local climbHoldPosition = nil
-
--- Физика и ввод
 local moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
 local touchYaw, touchPitch = 0, 0
 local rawGyroCF, baseGyroCF, smoothedCamRot = CFrame.identity, CFrame.identity, CFrame.identity
-
 local viewmodelFolder, leftArmModel, rightArmModel = nil, nil, nil
 local moveFrameL, moveFrameR = nil, nil
 local grabBtnL, grabBtnR = nil, nil
 local gestureBtnL, gestureBtnR = nil, nil
 local mainLoopConnection, physicsLoopConnection, gyroConnection, heartbeatThread = nil, nil, nil, nil
-
--- Сенсорное управление
 local camTouchInput, camTouchLastPos = nil, nil
 local screenTouchL, screenTouchLStart = nil, nil
 local screenTouchR, screenTouchRStart = nil, nil
-
 local handDragL, handDragR = Vector3.zero, Vector3.zero
 local currentHandOffsetL, currentHandOffsetR = Vector3.zero, Vector3.zero
 local wristPitchL, wristYawL, wristRollL = 0, 0, 0
@@ -122,23 +93,30 @@ local tapReachL, tapReachR = Vector3.zero, Vector3.zero
 local tapRotL, tapRotR = CFrame.identity, CFrame.identity
 local tapAlphaL, tapAlphaR = 0, 0
 local swayCF, lastCamCF, bobStep = CFrame.identity, camera.CFrame, 0
-
--- Сеть
 local wsConnection = nil
 local isConnectingNet = false
 local netAttemptId = 0
 local remoteVRUsers = {}
 local lastNetSend = 0
 local lastSentPosL, lastSentPosR = Vector3.zero, Vector3.zero
-
+-- // СИСТЕМА ЭМОЦИЙ
+local EMOTES = {
+    {Name = "🗿 СИГМА (MEW/SHH)", Id = "SIGMA", Duration = 4.2},
+    {Name = "👋 ПОМАХАТЬ", Id = "WAVE", Duration = 3.0},
+    {Name = "🤦 ФЕЙСПАЛМ", Id = "FACEPALM", Duration = 3.2},
+    {Name = "👏 АПЛОДИСМЕНТЫ", Id = "CLAP", Duration = 3.5},
+    {Name = "🤷 ПОЖАТИЕ ПЛЕЧ", Id = "SHRUG", Duration = 3.0},
+    {Name = "🫶 СЕРДЕЧКО", Id = "HEART", Duration = 3.6}
+}
+local currentEmoteIndex = 1
+local activeEmoteId = nil
+local emoteElapsed = 0
 local function r2(n) return math.floor(n * 100 + 0.5) / 100 end
 local function cfToArr(cf)
     local p = safeVec3(cf.Position)
     local rx, ry, rz = cf:ToEulerAnglesXYZ()
     return {r2(p.X), r2(p.Y), r2(p.Z)}, {r2(rx), r2(ry), r2(rz)}
 end
-
--- // 15 СТИЛЕЙ РУК
 local STYLES = {
     {Name = "ТВОЙ СКИН", Col = nil, Cuff = Color3.fromRGB(0, 255, 180), Accent = Color3.fromRGB(0, 255, 180), Mat = Enum.Material.SmoothPlastic, Light = Color3.fromRGB(0, 255, 180)},
     {Name = "НЕОН КИБЕР", Col = Color3.fromRGB(15, 18, 26), Cuff = Color3.fromRGB(0, 240, 255), Accent = Color3.fromRGB(0, 255, 255), Mat = Enum.Material.Metal, Light = Color3.fromRGB(0, 240, 255)},
@@ -156,12 +134,10 @@ local STYLES = {
     {Name = "ИЗУМРУД ДРАКОНА", Col = Color3.fromRGB(15, 35, 25), Cuff = Color3.fromRGB(0, 255, 140), Accent = Color3.fromRGB(50, 255, 180), Mat = Enum.Material.Foil, Light = Color3.fromRGB(0, 255, 140)},
     {Name = "ЭЛЕКТРО ШТОРМ", Col = Color3.fromRGB(20, 30, 50), Cuff = Color3.fromRGB(0, 160, 255), Accent = Color3.fromRGB(255, 255, 255), Mat = Enum.Material.Neon, Light = Color3.fromRGB(0, 180, 255)}
 }
-
 local function updateGrabBtnVisual(isLeft)
     local btn = isLeft and grabBtnL or grabBtnR
     local isClimbing = isLeft and isClimbingL or isClimbingR
     local isGrabbed = isLeft and (grabbedDataL ~= nil) or (grabbedDataR ~= nil)
-
     if not btn then return end
     if isClimbing then
         btn.BackgroundColor3 = Color3.fromRGB(0, 240, 255)
@@ -174,17 +150,13 @@ local function updateGrabBtnVisual(isLeft)
         btn.Text = "🖐️"
     end
 end
-
--- // 4. ГЛАВНЫЙ ИНТЕРФЕЙС
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = GUI_NAME
 screenGui.ResetOnSpawn = false
 pcall(function() screenGui.Parent = CoreGui end)
 if not screenGui.Parent then screenGui.Parent = player:WaitForChild("PlayerGui") end
-
 local selectedWidgetKey = nil
 local widgetRegistry = {}
-
 local function makeFreeDraggable(frame, handle)
     local dragging, dragStart, startPos = false, nil, nil
     handle.InputBegan:Connect(function(input)
@@ -206,8 +178,6 @@ local function makeFreeDraggable(frame, handle)
         end
     end)
 end
-
--- ИНСПЕКТОР UI
 local editInspector = Instance.new("Frame", screenGui)
 editInspector.Size = UDim2.new(0, 360, 0, 54)
 editInspector.Position = UDim2.new(0.5, -180, 0, 48)
@@ -218,7 +188,6 @@ editInspector.ZIndex = 300
 Instance.new("UICorner", editInspector).CornerRadius = UDim.new(0, 14)
 local eiStroke = Instance.new("UIStroke", editInspector)
 eiStroke.Thickness, eiStroke.Color = 2, Color3.fromRGB(0, 255, 255)
-
 local inspectorLabel = Instance.new("TextLabel", editInspector)
 inspectorLabel.Size = UDim2.new(0, 140, 1, 0)
 inspectorLabel.Position = UDim2.new(0, 14, 0, 0)
@@ -229,7 +198,6 @@ inspectorLabel.Font, inspectorLabel.TextSize = Enum.Font.GothamBold, 11
 inspectorLabel.TextXAlignment = Enum.TextXAlignment.Left
 inspectorLabel.TextWrapped = true
 inspectorLabel.ZIndex = 301
-
 local plusScaleBtn = Instance.new("TextButton", editInspector)
 plusScaleBtn.Size, plusScaleBtn.Position = UDim2.new(0, 42, 0, 36), UDim2.new(0, 160, 0.5, -18)
 plusScaleBtn.BackgroundColor3, plusScaleBtn.TextColor3, plusScaleBtn.Text = Color3.fromRGB(22, 32, 48), Color3.fromRGB(0, 255, 180), "＋"
@@ -238,7 +206,6 @@ plusScaleBtn.ZIndex = 301
 Instance.new("UICorner", plusScaleBtn).CornerRadius = UDim.new(0, 8)
 local pStrk = Instance.new("UIStroke", plusScaleBtn)
 pStrk.Color = Color3.fromRGB(0, 255, 180)
-
 local minusScaleBtn = Instance.new("TextButton", editInspector)
 minusScaleBtn.Size, minusScaleBtn.Position = UDim2.new(0, 42, 0, 36), UDim2.new(0, 208, 0.5, -18)
 minusScaleBtn.BackgroundColor3, minusScaleBtn.TextColor3, minusScaleBtn.Text = Color3.fromRGB(38, 22, 28), Color3.fromRGB(255, 80, 100), "－"
@@ -247,7 +214,6 @@ minusScaleBtn.ZIndex = 301
 Instance.new("UICorner", minusScaleBtn).CornerRadius = UDim.new(0, 8)
 local mStrk = Instance.new("UIStroke", minusScaleBtn)
 mStrk.Color = Color3.fromRGB(255, 80, 100)
-
 local resetScaleBtn = Instance.new("TextButton", editInspector)
 resetScaleBtn.Size, resetScaleBtn.Position = UDim2.new(0, 94, 0, 36), UDim2.new(0, 256, 0.5, -18)
 resetScaleBtn.BackgroundColor3, resetScaleBtn.TextColor3, resetScaleBtn.Text = Color3.fromRGB(28, 24, 42), Color3.fromRGB(230, 180, 255), "СБРОС 100%"
@@ -256,18 +222,15 @@ resetScaleBtn.ZIndex = 301
 Instance.new("UICorner", resetScaleBtn).CornerRadius = UDim.new(0, 8)
 local rStrk = Instance.new("UIStroke", resetScaleBtn)
 rStrk.Color = Color3.fromRGB(200, 150, 255)
-
 local function registerEditableWidget(key, name, frame, baseSize, defaultTrans, updateFn)
     local stroke = Instance.new("UIStroke", frame)
     stroke.Thickness, stroke.Color, stroke.Enabled = 2, Color3.fromRGB(0, 255, 255), false
     Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
-
     local wData = {
         Key = key, Name = name, Frame = frame, Stroke = stroke,
         BaseSize = baseSize, DefaultTrans = defaultTrans or 1, Scale = 1.0, UpdateFn = updateFn
     }
     widgetRegistry[key] = wData
-
     local dragging, dragStart, startPos = false, nil, nil
     frame.InputBegan:Connect(function(input)
         if EDITING_UI and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) then
@@ -276,27 +239,23 @@ local function registerEditableWidget(key, name, frame, baseSize, defaultTrans, 
             stroke.Color = Color3.fromRGB(255, 220, 0)
             inspectorLabel.Text = name .. "\nРазмер: " .. math.floor(wData.Scale * 100) .. "%"
             inspectorLabel.TextColor3 = Color3.fromRGB(255, 220, 0)
-
             dragging = true
             dragStart = Vector2.new(input.Position.X, input.Position.Y)
             startPos = frame.Position
         end
     end)
-
     UserInputService.InputChanged:Connect(function(input)
         if dragging and EDITING_UI and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
             local delta = Vector2.new(input.Position.X, input.Position.Y) - dragStart
             frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
-
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
         end
     end)
 end
-
 plusScaleBtn.Activated:Connect(function()
     if selectedWidgetKey and widgetRegistry[selectedWidgetKey] then
         local w = widgetRegistry[selectedWidgetKey]
@@ -306,7 +265,6 @@ plusScaleBtn.Activated:Connect(function()
         inspectorLabel.Text = w.Name .. "\nРазмер: " .. math.floor(w.Scale * 100) .. "%"
     end
 end)
-
 minusScaleBtn.Activated:Connect(function()
     if selectedWidgetKey and widgetRegistry[selectedWidgetKey] then
         local w = widgetRegistry[selectedWidgetKey]
@@ -316,7 +274,6 @@ minusScaleBtn.Activated:Connect(function()
         inspectorLabel.Text = w.Name .. "\nРазмер: " .. math.floor(w.Scale * 100) .. "%"
     end
 end)
-
 resetScaleBtn.Activated:Connect(function()
     if selectedWidgetKey and widgetRegistry[selectedWidgetKey] then
         local w = widgetRegistry[selectedWidgetKey]
@@ -326,55 +283,45 @@ resetScaleBtn.Activated:Connect(function()
         inspectorLabel.Text = w.Name .. "\nРазмер: 100%"
     end
 end)
-
--- ГЛАВНАЯ ПАНЕЛЬ
 local mainCard = Instance.new("Frame", screenGui)
-mainCard.Size, mainCard.Position = UDim2.new(0, 350, 0, 345), UDim2.new(0.5, -175, 0.05, 0)
+mainCard.Size, mainCard.Position = UDim2.new(0, 350, 0, 385), UDim2.new(0.5, -175, 0.05, 0)
 mainCard.BackgroundColor3, mainCard.BackgroundTransparency = Color3.fromRGB(10, 12, 18), 0.08
 mainCard.BorderSizePixel = 0
 mainCard.Active = true
 Instance.new("UICorner", mainCard).CornerRadius = UDim.new(0, 16)
 local cardStroke = Instance.new("UIStroke", mainCard)
 cardStroke.Thickness, cardStroke.Color = 1.5, Color3.fromRGB(0, 255, 180)
-
 local dragHandle = Instance.new("Frame", mainCard)
 dragHandle.Size, dragHandle.Position = UDim2.new(1, -75, 0, 42), UDim2.new(0, 0, 0, 0)
 dragHandle.BackgroundTransparency = 1
 dragHandle.Active = true
 makeFreeDraggable(mainCard, dragHandle)
-
 local title = Instance.new("TextLabel", dragHandle)
 title.Size, title.Position = UDim2.new(1, 0, 0, 20), UDim2.new(0, 14, 0, 5)
-title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v58.0 (ANTI-FLING OMEGA)"
+title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v59.0 (SIGMA & EMOTES)"
 title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 11
 title.TextXAlignment = Enum.TextXAlignment.Left
-
 local netStatus = Instance.new("TextLabel", dragHandle)
 netStatus.Size, netStatus.Position = UDim2.new(1, 0, 0, 14), UDim2.new(0, 14, 0, 24)
 netStatus.BackgroundTransparency, netStatus.Text = 1, "⚪ VR: Готов к запуску"
 netStatus.TextColor3, netStatus.Font, netStatus.TextSize = Color3.fromRGB(180, 190, 205), Enum.Font.GothamMedium, 9
 netStatus.TextXAlignment = Enum.TextXAlignment.Left
-
 local windowControls = Instance.new("Frame", mainCard)
 windowControls.Size, windowControls.Position = UDim2.new(0, 70, 0, 36), UDim2.new(1, -74, 0, 4)
 windowControls.BackgroundTransparency = 1
 windowControls.ZIndex = 50
-
 local minBtn = Instance.new("TextButton", windowControls)
 minBtn.Size, minBtn.Position = UDim2.new(0, 28, 0, 28), UDim2.new(0, 0, 0, 4)
 minBtn.BackgroundColor3, minBtn.TextColor3, minBtn.Text = Color3.fromRGB(24, 28, 38), Color3.fromRGB(200, 200, 220), "—"
 minBtn.Font, minBtn.TextSize = Enum.Font.GothamBold, 12
 minBtn.ZIndex = 51
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
-
 local closeBtn = Instance.new("TextButton", windowControls)
 closeBtn.Size, closeBtn.Position = UDim2.new(0, 28, 0, 28), UDim2.new(0, 36, 0, 4)
 closeBtn.BackgroundColor3, closeBtn.TextColor3, closeBtn.Text = Color3.fromRGB(45, 20, 26), Color3.fromRGB(255, 80, 80), "✕"
 closeBtn.Font, closeBtn.TextSize = Enum.Font.GothamBold, 12
 closeBtn.ZIndex = 51
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-
--- УМНАЯ СФЕРА
 local floatOrb = Instance.new("TextButton", screenGui)
 floatOrb.Size, floatOrb.Position = UDim2.new(0, 52, 0, 52), UDim2.new(0.5, -26, 0.05, 0)
 floatOrb.BackgroundColor3, floatOrb.TextColor3, floatOrb.Text = Color3.fromRGB(10, 14, 20), Color3.fromRGB(0, 255, 180), "👑\nVR"
@@ -383,7 +330,6 @@ floatOrb.ZIndex = 100
 Instance.new("UICorner", floatOrb).CornerRadius = UDim.new(1, 0)
 local orbStroke = Instance.new("UIStroke", floatOrb)
 orbStroke.Thickness, orbStroke.Color = 2, Color3.fromRGB(0, 255, 180)
-
 do
     local orbDragging, orbDragStart, orbStartPos, orbDownTime = false, nil, nil, 0
     floatOrb.InputBegan:Connect(function(input)
@@ -413,8 +359,6 @@ do
         end
     end)
 end
-
--- КНОПКИ МЕНЮ
 local function makeHubBtn(txt, pos, bgCol, textCol)
     local b = Instance.new("TextButton", mainCard)
     b.Size, b.Position = UDim2.new(0, 156, 0, 32), pos
@@ -423,7 +367,6 @@ local function makeHubBtn(txt, pos, bgCol, textCol)
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
     return b
 end
-
 local toggleBtn     = makeHubBtn("⏻ ВКЛЮЧИТЬ VR", UDim2.new(0, 12, 0, 48), Color3.fromRGB(18, 22, 30), Color3.fromRGB(0, 255, 180))
 local handStyleBtn  = makeHubBtn("🎨 СТИЛЬ: 1/15 СКИН", UDim2.new(0, 182, 0, 48), Color3.fromRGB(18, 20, 28), Color3.fromRGB(230, 180, 255))
 local modeBtn       = makeHubBtn("👆 ПОВОРОТ: ПАЛЬЦЕМ", UDim2.new(0, 12, 0, 85), Color3.fromRGB(18, 20, 28), Color3.fromRGB(255, 185, 40))
@@ -437,13 +380,14 @@ local calibBtn      = makeHubBtn("🎯 ЦЕНТР КАМЕРЫ", UDim2.new(0, 18
 local handCtrlBtn   = makeHubBtn("🕹️ ДЖОЙСТИК: ПО УМОЛЧ.", UDim2.new(0, 12, 0, 233), Color3.fromRGB(18, 28, 30), Color3.fromRGB(0, 255, 200))
 local uiEditBtn     = makeHubBtn("📍 РЕДАКТОР GUI", UDim2.new(0, 182, 0, 233), Color3.fromRGB(18, 25, 35), Color3.fromRGB(0, 200, 255))
 local resetDistBtn  = makeHubBtn("📏 СБРОС ЗУМА (4м)", UDim2.new(0, 12, 0, 270), Color3.fromRGB(24, 20, 36), Color3.fromRGB(220, 180, 255))
-resetDistBtn.Size = UDim2.new(0, 326, 0, 32)
-
--- // 5. НЕЗАВИСИМЫЕ КОНТРОЛЛЕРЫ
+resetDistBtn.Size = UDim2.new(0, 326, 0, 30)
+local emoteSelectBtn = makeHubBtn("🎭 " .. EMOTES[1].Name, UDim2.new(0, 12, 0, 306), Color3.fromRGB(28, 22, 38), Color3.fromRGB(220, 160, 255))
+local emotePlayBtn   = makeHubBtn("▶️ СТАРТ ЭМОЦИИ", UDim2.new(0, 182, 0, 306), Color3.fromRGB(20, 36, 30), Color3.fromRGB(0, 255, 180))
+local emoteStopBtn   = makeHubBtn("⏹️ СТОП ЭМОЦИИ", UDim2.new(0, 12, 0, 344), Color3.fromRGB(38, 20, 25), Color3.fromRGB(255, 90, 110))
+emoteStopBtn.Size = UDim2.new(0, 326, 0, 28)
 local dpadContainer = Instance.new("Frame", screenGui)
 dpadContainer.Size, dpadContainer.Position = UDim2.new(0, 135, 0, 135), UDim2.new(0, 20, 1, -165)
 dpadContainer.BackgroundTransparency, dpadContainer.Visible, dpadContainer.Active = 1, false, true
-
 local dpadButtons = {}
 local function createDpadBtn(sym, posKey, fn)
     local b = Instance.new("TextButton", dpadContainer)
@@ -451,7 +395,6 @@ local function createDpadBtn(sym, posKey, fn)
     b.Text, b.TextColor3, b.Font, b.TextSize = sym, Color3.fromRGB(0, 255, 180), Enum.Font.GothamBold, 18
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 10)
     Instance.new("UIStroke", b).Color = Color3.fromRGB(0, 255, 180)
-
     local currentTouch = nil
     b.InputBegan:Connect(function(i)
         if not EDITING_UI and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1) then
@@ -473,7 +416,6 @@ createDpadBtn("▲", "UP", function(v) moveForward = v end)
 createDpadBtn("▼", "DOWN", function(v) moveBackward = v end)
 createDpadBtn("◄", "LEFT", function(v) moveLeft = v end)
 createDpadBtn("►", "RIGHT", function(v) moveRight = v end)
-
 local function updateDpadInner(s)
     local btnSz = 42 * s
     dpadButtons.UP.Size, dpadButtons.UP.Position = UDim2.new(0, btnSz, 0, btnSz), UDim2.new(0.5, -btnSz/2, 0, 0)
@@ -483,21 +425,17 @@ local function updateDpadInner(s)
 end
 updateDpadInner(1.0)
 registerEditableWidget("DPAD", "D-Pad (Ходьба)", dpadContainer, Vector2.new(135, 135), 1, updateDpadInner)
-
--- // ПРОВЕРКА СТЕНЫ
 local function findClimbWallTarget(palmPart)
     if not palmPart then return nil, nil end
     local pPos = palmPart.Position
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = {player.Character, viewmodelFolder}
-
     local dirs = {
         camera.CFrame.LookVector * 4.5,
         palmPart.CFrame.LookVector * 4.0,
         (camera.CFrame.LookVector + palmPart.CFrame.LookVector).Unit * 4.0
     }
-
     for _, dir in ipairs(dirs) do
         local res = workspace:Raycast(pPos, dir, rayParams)
         if res and res.Instance and res.Instance:IsA("BasePart") and res.Instance.CanCollide and res.Instance.Anchored then
@@ -507,15 +445,11 @@ local function findClimbWallTarget(palmPart)
     end
     return nil, nil
 end
-
--- // БЕЗОПАСНЫЙ ПОИСК ПРЕДМЕТОВ (БЕЗ МАШИН И СИДЕНИЙ)
 local function findUniversalGrabTarget(palmPart, maxDist)
     if not palmPart then return nil end
     local pPos = palmPart.Position
     local closestObj = nil
     local closestDist = maxDist or 8.5
-
-    -- 1. Игроки
     for _, otherPlr in ipairs(Players:GetPlayers()) do
         if otherPlr ~= player and otherPlr.Character then
             local rPart = otherPlr.Character:FindFirstChild("HumanoidRootPart") or otherPlr.Character:FindFirstChild("Head") or otherPlr.Character:FindFirstChild("Torso")
@@ -528,21 +462,16 @@ local function findUniversalGrabTarget(palmPart, maxDist)
             end
         end
     end
-
-    -- 2. Предметы (Исключаем сиденья, транспорт и тяжелые объекты)
     if not closestObj then
         local overlapParams = OverlapParams.new()
         overlapParams.FilterType = Enum.RaycastFilterType.Exclude
         overlapParams.FilterDescendantsInstances = {player.Character, viewmodelFolder}
-
         local nearbyParts = workspace:GetPartBoundsInRadius(pPos, closestDist, overlapParams)
         for _, p in ipairs(nearbyParts) do
             if p:IsA("BasePart") and p.Transparency < 0.95 and p.Size.Magnitude < 35 and not p.Anchored then
                 if p:IsA("Seat") or p:IsA("VehicleSeat") then continue end
-
                 local targetChar = p:FindFirstAncestorOfClass("Model")
                 local targetPlr = targetChar and Players:GetPlayerFromCharacter(targetChar)
-
                 if targetPlr and targetPlr ~= player then
                     local rPart = targetChar:FindFirstChild("HumanoidRootPart") or p
                     closestObj = {Type = "PLAYER", Target = targetPlr, Part = rPart, Name = targetPlr.Name, UserId = targetPlr.UserId}
@@ -552,7 +481,6 @@ local function findUniversalGrabTarget(palmPart, maxDist)
                         continue
                     end
                     if p.AssemblyMass > 350 then continue end
-
                     local d = (p.Position - pPos).Magnitude
                     if d < closestDist then
                         closestDist = d
@@ -566,15 +494,10 @@ local function findUniversalGrabTarget(palmPart, maxDist)
             end
         end
     end
-
     return closestObj
 end
-
--- // СОЗДАНИЕ НЕЗАВИСИМЫХ КОМПЛЕКСОВ РУК
 local function createIndependentHandPad(isLeft)
     local side = isLeft and "L" or "R"
-
-    -- 1. ДЖОЙСТИК ДВИЖЕНИЯ
     local moveFrame = Instance.new("Frame", screenGui)
     moveFrame.Size = UDim2.new(0, 72, 0, 72)
     moveFrame.Position = isLeft and UDim2.new(0, 15, 0.45, 0) or UDim2.new(1, -87, 0.45, 0)
@@ -582,9 +505,7 @@ local function createIndependentHandPad(isLeft)
     Instance.new("UICorner", moveFrame).CornerRadius = UDim.new(1, 0)
     local mStroke = Instance.new("UIStroke", moveFrame)
     mStroke.Thickness, mStroke.Color = 1.6, Color3.fromRGB(0, 255, 180)
-
     if isLeft then moveFrameL = moveFrame else moveFrameR = moveFrame end
-
     local moveKnob = Instance.new("Frame", moveFrame)
     moveKnob.Size = UDim2.new(0, 30, 0, 30)
     moveKnob.Position = UDim2.new(0.5, -15, 0.5, -15)
@@ -593,7 +514,6 @@ local function createIndependentHandPad(isLeft)
     local mLbl = Instance.new("TextLabel", moveKnob)
     mLbl.Size, mLbl.BackgroundTransparency = UDim2.new(1, 0, 1, 0), 1
     mLbl.Text, mLbl.TextColor3, mLbl.Font, mLbl.TextSize = side, Color3.fromRGB(10, 15, 20), Enum.Font.GothamBold, 12
-
     local function updateMoveInner(s)
         local kSz = 30 * s
         moveKnob.Size = UDim2.new(0, kSz, 0, kSz)
@@ -601,8 +521,6 @@ local function createIndependentHandPad(isLeft)
         mLbl.TextSize = 12 * s
     end
     registerEditableWidget("MOVE_" .. side, "Джойстик Движения " .. side, moveFrame, Vector2.new(72, 72), 0.2, updateMoveInner)
-
-    -- 2. ДЖОЙСТИК КРУЧЕНИЯ
     local rotFrame = Instance.new("Frame", screenGui)
     rotFrame.Size = UDim2.new(0, 60, 0, 60)
     rotFrame.Position = isLeft and UDim2.new(0, 95, 0.46, 0) or UDim2.new(1, -155, 0.46, 0)
@@ -610,7 +528,6 @@ local function createIndependentHandPad(isLeft)
     Instance.new("UICorner", rotFrame).CornerRadius = UDim.new(1, 0)
     local rStroke = Instance.new("UIStroke", rotFrame)
     rStroke.Thickness, rStroke.Color = 1.6, Color3.fromRGB(255, 100, 220)
-
     local rotKnob = Instance.new("Frame", rotFrame)
     rotKnob.Size = UDim2.new(0, 26, 0, 26)
     rotKnob.Position = UDim2.new(0.5, -13, 0.5, -13)
@@ -619,7 +536,6 @@ local function createIndependentHandPad(isLeft)
     local rLbl = Instance.new("TextLabel", rotKnob)
     rLbl.Size, rLbl.BackgroundTransparency = UDim2.new(1, 0, 1, 0), 1
     rLbl.Text, rLbl.TextColor3, rLbl.Font, rLbl.TextSize = "🔄", Color3.fromRGB(15, 10, 20), Enum.Font.GothamBold, 11
-
     local function updateRotInner(s)
         local kSz = 26 * s
         rotKnob.Size = UDim2.new(0, kSz, 0, kSz)
@@ -627,31 +543,25 @@ local function createIndependentHandPad(isLeft)
         rLbl.TextSize = 11 * s
     end
     registerEditableWidget("ROT_" .. side, "Джойстик Кручения " .. side, rotFrame, Vector2.new(60, 60), 0.2, updateRotInner)
-
-    -- 3. ПАНЕЛЬ ЗУМА, ХВАТА И ЖЕСТОВ
     local toolFrame = Instance.new("Frame", screenGui)
     toolFrame.Size = UDim2.new(0, 36, 0, 118)
     toolFrame.Position = isLeft and UDim2.new(0, 162, 0.39, 0) or UDim2.new(1, -200, 0.39, 0)
     toolFrame.BackgroundTransparency, toolFrame.Visible, toolFrame.Active = 1, false, true
-
     local zoomInBtn = Instance.new("TextButton", toolFrame)
     zoomInBtn.Size, zoomInBtn.Position = UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0, 0)
     zoomInBtn.BackgroundColor3, zoomInBtn.TextColor3, zoomInBtn.Text = Color3.fromRGB(20, 25, 35), Color3.fromRGB(0, 200, 255), "▲"
     zoomInBtn.Font, zoomInBtn.TextSize = Enum.Font.GothamBold, 11
     Instance.new("UICorner", zoomInBtn).CornerRadius = UDim.new(0, 6)
-
     local zoomOutBtn = Instance.new("TextButton", toolFrame)
     zoomOutBtn.Size, zoomOutBtn.Position = UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0, 29)
     zoomOutBtn.BackgroundColor3, zoomOutBtn.TextColor3, zoomOutBtn.Text = Color3.fromRGB(20, 25, 35), Color3.fromRGB(0, 200, 255), "▼"
     zoomOutBtn.Font, zoomOutBtn.TextSize = Enum.Font.GothamBold, 11
     Instance.new("UICorner", zoomOutBtn).CornerRadius = UDim.new(0, 6)
-
     local grabBtn = Instance.new("TextButton", toolFrame)
     grabBtn.Size, grabBtn.Position = UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0, 58)
     grabBtn.BackgroundColor3, grabBtn.TextColor3, grabBtn.Text = Color3.fromRGB(30, 20, 25), Color3.fromRGB(255, 80, 120), "🖐️"
     grabBtn.Font, grabBtn.TextSize = Enum.Font.GothamBold, 12
     Instance.new("UICorner", grabBtn).CornerRadius = UDim.new(0, 6)
-
     local gBtn = Instance.new("TextButton", toolFrame)
     gBtn.Size, gBtn.Position = UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0, 87)
     gBtn.BackgroundColor3, gBtn.TextColor3, gBtn.Text = Color3.fromRGB(22, 28, 40), Color3.fromRGB(255, 220, 100), "🖐️"
@@ -660,15 +570,7 @@ local function createIndependentHandPad(isLeft)
     local gStroke = Instance.new("UIStroke", gBtn)
     gStroke.Color = Color3.fromRGB(255, 220, 100)
     gStroke.Thickness = 1.2
-
-    if isLeft then 
-        grabBtnL = grabBtn
-        gestureBtnL = gBtn
-    else 
-        grabBtnR = grabBtn
-        gestureBtnR = gBtn
-    end
-
+    if isLeft then grabBtnL = grabBtn gestureBtnL = gBtn else grabBtnR = grabBtn gestureBtnR = gBtn end
     local function updateToolInner(s)
         local btnH = 26 * s
         zoomInBtn.Size, zoomInBtn.Position = UDim2.new(1, 0, 0, btnH), UDim2.new(0, 0, 0, 0)
@@ -677,7 +579,6 @@ local function createIndependentHandPad(isLeft)
         gBtn.Size, gBtn.Position = UDim2.new(1, 0, 0, btnH), UDim2.new(0, 0, 0, (btnH*3) + 9*s)
     end
     registerEditableWidget("TOOL_" .. side, "Панель Зума/Хвата/Жестов " .. side, toolFrame, Vector2.new(36, 118), 1, updateToolInner)
-
     zoomInBtn.Activated:Connect(function()
         if not VR_ACTIVE or EDITING_UI then return end
         if isLeft then grabDistL = math.clamp(grabDistL + 1.2, 1.5, 35) else grabDistR = math.clamp(grabDistR + 1.2, 1.5, 35) end
@@ -688,7 +589,6 @@ local function createIndependentHandPad(isLeft)
         if isLeft then grabDistL = math.clamp(grabDistL - 1.2, 1.5, 35) else grabDistR = math.clamp(grabDistR - 1.2, 1.5, 35) end
         grabDistBoth = math.clamp(grabDistBoth - 1.2, 1.5, 35)
     end)
-
     gBtn.Activated:Connect(function()
         if not VR_ACTIVE or EDITING_UI then return end
         if isLeft then
@@ -699,13 +599,10 @@ local function createIndependentHandPad(isLeft)
             gBtn.Text = GESTURES[gestureIndexR].Icon
         end
     end)
-
-    -- Хват и Карабкание
     grabBtn.Activated:Connect(function()
         if not VR_ACTIVE or EDITING_UI then return end
         local palm = isLeft and (leftArmModel and leftArmModel:FindFirstChild("Palm")) or (rightArmModel and rightArmModel:FindFirstChild("Palm"))
         local curRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-
         if isLeft then
             if isClimbingL or grabbedDataL then
                 isClimbingL, climbAnchorPosL, grabbedDataL = false, nil, nil
@@ -750,8 +647,6 @@ local function createIndependentHandPad(isLeft)
             updateGrabBtnVisual(false)
         end
     end)
-
-    -- Движение джойстиком
     local moveInput, mStartPos = nil, nil
     moveFrame.InputBegan:Connect(function(i)
         if not EDITING_UI and HAND_INPUT_MODE == "DEFAULT" and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1) then
@@ -780,8 +675,6 @@ local function createIndependentHandPad(isLeft)
             if isLeft then handDragL = Vector3.zero else handDragR = Vector3.zero end
         end
     end)
-
-    -- Кручение кистью
     local rotInput, rStartPos, lastRotTap = nil, nil, 0
     rotFrame.InputBegan:Connect(function(i)
         if not EDITING_UI and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1) then
@@ -800,7 +693,6 @@ local function createIndependentHandPad(isLeft)
             local vOff = (delta.Magnitude > 0 and delta.Unit or Vector2.zero) * math.clamp(delta.Magnitude, 0, maxOffset)
             local halfK = 13 * scale
             rotKnob.Position = UDim2.new(0.5, -halfK + vOff.X, 0.5, -halfK + vOff.Y)
-            
             local mult = 0.035
             if isLeft then
                 wristYawL = wristYawL - i.Delta.X * mult
@@ -822,14 +714,11 @@ local function createIndependentHandPad(isLeft)
 end
 createIndependentHandPad(true)
 createIndependentHandPad(false)
-
 local function refreshMovementJoysticksVisibility()
     local shouldShow = VR_ACTIVE and (HAND_INPUT_MODE == "DEFAULT" or EDITING_UI)
     if moveFrameL then moveFrameL.Visible = shouldShow end
     if moveFrameR then moveFrameR.Visible = shouldShow end
 end
-
--- // 6. АНАТОМИЧЕСКИЙ РИГ ЧЕЛОВЕЧЕСКОЙ КИСТИ
 local function applyStyleToModel(model, styleIndex, targetPlayer)
     local st = STYLES[styleIndex or 1]
     local baseCol = st.Col
@@ -837,13 +726,11 @@ local function applyStyleToModel(model, styleIndex, targetPlayer)
     local accentCol = st.Accent or cuffCol
     local mat = st.Mat
     local lightCol = st.Light or cuffCol
-
     if styleIndex == 1 then
         local targetChar = targetPlayer and targetPlayer.Character or player.Character
         local bodyPart = targetChar and (targetChar:FindFirstChild("LeftHand") or targetChar:FindFirstChild("Left Arm") or targetChar:FindFirstChild("Head"))
         baseCol = bodyPart and bodyPart.Color or Color3.fromRGB(225, 185, 145)
     end
-
     for _, p in ipairs(model:GetChildren()) do
         if p:IsA("BasePart") then
             if p.Name == "Cuff" or p.Name == "VisorGlass" or p.Name:find("Tip") then
@@ -861,77 +748,59 @@ local function applyStyleToModel(model, styleIndex, targetPlayer)
         end
     end
 end
-
 local function buildArm(isLeft, targetFolder, customStyle, targetPlayer)
     local m = Instance.new("Model")
     m.Name = isLeft and "VR_L" or "VR_R"
-
     local function mk(name, sz, isTip)
         local p = Instance.new("Part")
         p.Name, p.Size = name, sz
         p.TopSurface, p.BottomSurface, p.LeftSurface, p.RightSurface, p.FrontSurface, p.BackSurface = 0,0,0,0,0,0
         p.CanCollide, p.CanTouch, p.CanQuery, p.Anchored, p.CastShadow, p.Parent = false, false, false, true, false, m
-        
         if isTip then
             local mesh = Instance.new("SpecialMesh", p)
             mesh.MeshType = Enum.MeshType.Sphere
         end
         return p
     end
-
-    -- Основа руки
     mk("Forearm", Vector3.new(0.58, 0.46, 1.15))
     local cuff = mk("Cuff", Vector3.new(0.62, 0.50, 0.16))
     mk("CuffRing", Vector3.new(0.64, 0.52, 0.05))
     mk("Palm", Vector3.new(0.58, 0.28, 0.52))
     mk("ArmorPlate", Vector3.new(0.50, 0.08, 0.42))
     mk("KnuckleBar", Vector3.new(0.56, 0.12, 0.10))
-
-    -- 5 Плотных параллельных пальцев
     mk("ThumbBase",  Vector3.new(0.16, 0.16, 0.22))
     mk("ThumbTip",   Vector3.new(0.15, 0.15, 0.18), true)
-
     mk("IndexBase",  Vector3.new(0.13, 0.14, 0.24))
     mk("IndexTip",   Vector3.new(0.12, 0.12, 0.20), true)
-
     mk("MiddleBase", Vector3.new(0.14, 0.14, 0.27))
     mk("MiddleTip",  Vector3.new(0.13, 0.13, 0.22), true)
-
     mk("RingBase",   Vector3.new(0.13, 0.14, 0.24))
     mk("RingTip",    Vector3.new(0.12, 0.12, 0.20), true)
-
     mk("PinkyBase",  Vector3.new(0.12, 0.13, 0.20))
     mk("PinkyTip",   Vector3.new(0.11, 0.11, 0.16), true)
-
     local ptLight = Instance.new("PointLight", cuff)
     ptLight.Range = 5.5
     ptLight.Brightness = 1.8
     ptLight.Shadows = false
-
     applyStyleToModel(m, customStyle or HAND_STYLE, targetPlayer or player)
     m.Parent = targetFolder or viewmodelFolder
     return m
 end
-
 local function buildVisor(targetFolder, customStyle, targetPlayer)
     local vModel = Instance.new("Model")
     vModel.Name = "VR_Visor"
-
     local function mk(name, sz)
         local p = Instance.new("Part")
         p.Name, p.Size = name, sz
         p.CanCollide, p.CanTouch, p.CanQuery, p.Anchored, p.CastShadow, p.Parent = false, false, false, true, false, vModel
         return p
     end
-
-    local vf = mk("VisorFrame", Vector3.new(1.3, 0.45, 0.8))
-    local vg = mk("VisorGlass", Vector3.new(1.15, 0.32, 0.25))
-
+    mk("VisorFrame", Vector3.new(1.3, 0.45, 0.8))
+    mk("VisorGlass", Vector3.new(1.15, 0.32, 0.25))
     applyStyleToModel(vModel, customStyle or HAND_STYLE, targetPlayer or player)
     vModel.Parent = targetFolder
     return vModel
 end
-
 local function setupHands()
     if viewmodelFolder then viewmodelFolder:Destroy() end
     viewmodelFolder = Instance.new("Folder")
@@ -939,8 +808,6 @@ local function setupHands()
     viewmodelFolder.Parent = camera
     leftArmModel, rightArmModel = buildArm(true), buildArm(false)
 end
-
--- // 7. СЕТЕВОЙ МОДУЛЬ
 local function getWebSocketFunc()
     if syn and type(syn.websocket) == "table" and type(syn.websocket.connect) == "function" then
         return syn.websocket.connect
@@ -953,7 +820,6 @@ local function getWebSocketFunc()
     end
     return nil
 end
-
 local function cleanupNet()
     if heartbeatThread then task.cancel(heartbeatThread) heartbeatThread = nil end
     if wsConnection then pcall(function() wsConnection:Close() end) wsConnection = nil end
@@ -962,7 +828,6 @@ local function cleanupNet()
     isConnectingNet = false
     beingGrabbedBy = nil
 end
-
 local function updateNetCountLabel()
     if not VR_ACTIVE or not NETWORK_ENABLED then return end
     local count = 1
@@ -970,7 +835,6 @@ local function updateNetCountLabel()
     netStatus.Text = "🟢 VR СЕТЬ: Онлайн (Игроков: " .. count .. ")"
     netStatus.TextColor3 = Color3.fromRGB(0, 255, 180)
 end
-
 local function startNetworkSync()
     cleanupNet()
     if not NETWORK_ENABLED or not VR_ACTIVE then
@@ -978,11 +842,9 @@ local function startNetworkSync()
         netStatus.TextColor3 = Color3.fromRGB(180, 190, 205)
         return
     end
-
     netAttemptId = netAttemptId + 1
     local thisAttempt = netAttemptId
     isConnectingNet = true
-
     task.spawn(function()
         pcall(function()
             local wsConnect = getWebSocketFunc()
@@ -992,34 +854,27 @@ local function startNetworkSync()
                 isConnectingNet = false
                 return
             end
-
             netStatus.Text = "🟢 VR: Активен | 🟡 Подключение..."
             netStatus.TextColor3 = Color3.fromRGB(255, 215, 0)
-
             local ok, ws = pcall(function() return wsConnect(MY_PRIVATE_WS_URL) end)
             if ok and ws and thisAttempt == netAttemptId and VR_ACTIVE and NETWORK_ENABLED then
                 wsConnection = ws
                 updateNetCountLabel()
-
                 pcall(function()
                     wsConnection:Send(HttpService:JSONEncode({s = "HELLO", u = player.UserId, un = player.Name}))
                 end)
-
                 heartbeatThread = task.spawn(function()
                     while wsConnection and VR_ACTIVE and NETWORK_ENABLED do
                         task.wait(12)
                         pcall(function() wsConnection:Send(HttpService:JSONEncode({s = "PING", u = player.UserId})) end)
                     end
                 end)
-
                 wsConnection.OnMessage:Connect(function(msg)
                     pcall(function()
                         local data = HttpService:JSONDecode(msg)
                         if type(data) ~= "table" or data.u == player.UserId then return end
-
-                        if data.s == "VR58" or data.s == "VR57" or data.s == "VR56" or data.s == "HELLO" then
+                        if data.s == "VR58" or data.s == "VR59" or data.s == "HELLO" then
                             local remotePlr = Players:GetPlayerByUserId(data.u) or (data.un and Players:FindFirstChild(data.un))
-                            
                             if not remoteVRUsers[data.u] then
                                 local rFolder = Instance.new("Folder", workspace)
                                 rFolder.Name = "RemoteVR_" .. data.u
@@ -1049,17 +904,14 @@ local function startNetworkSync()
                                 }
                                 updateNetCountLabel()
                             end
-
                             local u = remoteVRUsers[data.u]
                             u.LastTick = tick()
-
                             if data.st and u.Style ~= data.st then
                                 u.Style = data.st
                                 applyStyleToModel(u.Left, data.st, remotePlr)
                                 applyStyleToModel(u.Right, data.st, remotePlr)
                                 applyStyleToModel(u.Visor, data.st, remotePlr)
                             end
-
                             u.GrabL = data.gL or false
                             u.GrabR = data.gR or false
                             u.ClimbL = data.cL or false
@@ -1070,24 +922,20 @@ local function startNetworkSync()
                             u.CurlsR = data.fR or (data.gR and {1,1,1,1,1} or {0.12, 0.12, 0.12, 0.12, 0.12})
                             u.HeldObjL = data.objL
                             u.HeldObjR = data.objR
-
                             local hasRoot = remotePlr and remotePlr.Character and remotePlr.Character:FindFirstChild("HumanoidRootPart")
                             if hasRoot and data.lp and data.lr and data.rp and data.rr then
                                 local remoteRoot = remotePlr.Character.HumanoidRootPart
                                 local shoulderL = remoteRoot.CFrame * CFrame.new(-1.1, -0.15, -0.2)
                                 local shoulderR = remoteRoot.CFrame * CFrame.new(1.1, -0.15, -0.2)
-
                                 u.TargetL = shoulderL * (CFrame.new(unpack(data.lp)) * CFrame.Angles(unpack(data.lr)))
                                 u.TargetR = shoulderR * (CFrame.new(unpack(data.rp)) * CFrame.Angles(unpack(data.rr)))
                             elseif data.wlp and data.wlr and data.wrp and data.wrr then
                                 u.TargetL = CFrame.new(unpack(data.wlp)) * CFrame.Angles(unpack(data.wlr))
                                 u.TargetR = CFrame.new(unpack(data.wrp)) * CFrame.Angles(unpack(data.wrr))
                             end
-
                             if data.hp and data.hr then
                                 u.TargetHead = CFrame.new(unpack(data.hp)) * CFrame.Angles(unpack(data.hr))
                             end
-
                             if remotePlr and remotePlr.Character then
                                 local c = remotePlr.Character
                                 for _, limbName in ipairs({"Left Arm", "Right Arm", "LeftHand", "LeftLowerArm", "LeftUpperArm", "RightHand", "RightLowerArm", "RightUpperArm"}) do
@@ -1095,7 +943,6 @@ local function startNetworkSync()
                                     if limb and limb:IsA("BasePart") then limb.Transparency = 1 end
                                 end
                             end
-
                             if data.gb and data.gb.target == player.UserId then
                                 beingGrabbedBy = {Grabber = data.u, GrabberName = data.un or "Игрок", Hand = data.gb.hand, Dist = data.gb.dist or 4.0}
                             elseif beingGrabbedBy and beingGrabbedBy.Grabber == data.u then
@@ -1104,7 +951,6 @@ local function startNetworkSync()
                         end
                     end)
                 end)
-
                 wsConnection.OnClose:Connect(function()
                     cleanupNet()
                     if VR_ACTIVE and NETWORK_ENABLED then
@@ -1126,16 +972,12 @@ local function startNetworkSync()
         end)
     end)
 end
-
--- // 8. ВВОД КАМЕРЫ И СЕНСОРНОГО УПРАВЛЕНИЯ
 UserInputService.InputBegan:Connect(function(input, processed)
     if not VR_ACTIVE or EDITING_UI or processed then return end
-
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         local vpSize = camera.ViewportSize
         local isUpperHalf = input.Position.Y < (vpSize.Y * 0.48)
         local isLeftSide = input.Position.X < (vpSize.X * 0.5)
-
         if HAND_INPUT_MODE == "SCREEN_DRAG" then
             if isUpperHalf then
                 if not camTouchInput then
@@ -1183,7 +1025,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
                 camTouchInput = input
                 camTouchLastPos = Vector2.new(input.Position.X, input.Position.Y)
             end
-
             local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
             local localDir = camera.CFrame:VectorToObjectSpace(ray.Direction).Unit
             local aimRot = CFrame.lookAt(Vector3.zero, localDir)
@@ -1195,19 +1036,15 @@ UserInputService.InputBegan:Connect(function(input, processed)
         end
     end
 end)
-
 UserInputService.InputChanged:Connect(function(input, processed)
     if not VR_ACTIVE or EDITING_UI then return end
-
     if input == camTouchInput and camTouchLastPos then
         local curPos = Vector2.new(input.Position.X, input.Position.Y)
         local d = curPos - camTouchLastPos
         camTouchLastPos = curPos
-
         touchYaw = touchYaw - d.X * (0.0035 * SENS_MULTIPLIER)
         touchPitch = math.clamp(touchPitch - d.Y * (0.0035 * SENS_MULTIPLIER), math.rad(-75), math.rad(75))
     end
-
     if HAND_INPUT_MODE == "SCREEN_DRAG" then
         if input == screenTouchL and screenTouchLStart then
             local delta = input.Position - screenTouchLStart
@@ -1226,7 +1063,6 @@ UserInputService.InputChanged:Connect(function(input, processed)
         end
     end
 end)
-
 UserInputService.InputEnded:Connect(function(input)
     if input == camTouchInput then camTouchInput, camTouchLastPos = nil, nil end
     if input == screenTouchL then
@@ -1246,12 +1082,9 @@ UserInputService.InputEnded:Connect(function(input)
         end
     end
 end)
-
 if UserInputService.GyroscopeEnabled then
     gyroConnection = UserInputService.DeviceRotationChanged:Connect(function(_, rotCFrame) rawGyroCF = rotCFrame end)
 end
-
--- // 9. ЧЕЛОВЕЧЕСКАЯ ПРОЦЕДУРНАЯ КИНЕМАТИКА
 local function applyFingerKinematics(arm, isL, base, curls)
     local side = isL and -1 or 1
     local kb = arm:FindFirstChild("KnuckleBar")
@@ -1260,59 +1093,105 @@ local function applyFingerKinematics(arm, isL, base, curls)
     local mb, mt = arm:FindFirstChild("MiddleBase"), arm:FindFirstChild("MiddleTip")
     local rb, rt = arm:FindFirstChild("RingBase"), arm:FindFirstChild("RingTip")
     local pb, pt = arm:FindFirstChild("PinkyBase"), arm:FindFirstChild("PinkyTip")
-
     local cT = curls[1] or 0.12
     local cI = curls[2] or 0.12
     local cM = curls[3] or 0.12
     local cR = curls[4] or 0.12
     local cP = curls[5] or 0.12
-
     if kb then kb.CFrame = base * CFrame.new(0, 0.08, -0.52) end
-
-    -- Большой палец
     if tb and tt then
         local tRot = CFrame.Angles(math.rad(-10 - cT * 40), math.rad(side * (45 + cT * 25)), math.rad(side * (-20 - cT * 35)))
         tb.CFrame = base * CFrame.new(side * (0.24 - cT * 0.08), -0.04 - cT * 0.04, -0.22 - cT * 0.08) * tRot
         tt.CFrame = tb.CFrame * CFrame.new(0, -cT * 0.04, -0.16) * CFrame.Angles(math.rad(-cT * 50), 0, 0)
     end
-
-    -- Указательный палец
     if ib and it then
         local iRot = CFrame.Angles(math.rad(-8 - cI * 75), math.rad(side * 2), 0)
         ib.CFrame = base * CFrame.new(side * 0.165, -0.01 - cI * 0.03, -0.54 + cI * 0.06) * iRot
         it.CFrame = ib.CFrame * CFrame.new(0, -cI * 0.02, -0.18) * CFrame.Angles(math.rad(-cI * 65), 0, 0)
     end
-
-    -- Средний палец
     if mb and mt then
         local mRot = CFrame.Angles(math.rad(-8 - cM * 75), 0, 0)
         mb.CFrame = base * CFrame.new(side * 0.055, -0.01 - cM * 0.03, -0.56 + cM * 0.06) * mRot
         mt.CFrame = mb.CFrame * CFrame.new(0, -cM * 0.02, -0.20) * CFrame.Angles(math.rad(-cM * 65), 0, 0)
     end
-
-    -- Безымянный палец
     if rb and rt then
         local rRot = CFrame.Angles(math.rad(-8 - cR * 75), math.rad(-side * 2), 0)
         rb.CFrame = base * CFrame.new(side * -0.055, -0.01 - cR * 0.03, -0.54 + cR * 0.06) * rRot
         rt.CFrame = rb.CFrame * CFrame.new(0, -cR * 0.02, -0.18) * CFrame.Angles(math.rad(-cR * 65), 0, 0)
     end
-
-    -- Мизинец
     if pb and pt then
         local pRot = CFrame.Angles(math.rad(-8 - cP * 75), math.rad(-side * 4), 0)
         pb.CFrame = base * CFrame.new(side * -0.165, -0.01 - cP * 0.03, -0.50 + cP * 0.06) * pRot
         pt.CFrame = pb.CFrame * CFrame.new(0, -cP * 0.02, -0.15) * CFrame.Angles(math.rad(-cP * 65), 0, 0)
     end
 end
-
--- // 10. ГЛАВНЫЙ ЦИКЛ РЕНДЕРА И ЗАЩИТА ТРАНСПОРТА
+local function evaluateEmotePose(eId, t, camCF)
+    local offL, offR = Vector3.zero, Vector3.zero
+    local rotL, rotR = CFrame.identity, CFrame.identity
+    local fL = {0.12, 0.12, 0.12, 0.12, 0.12}
+    local fR = {0.12, 0.12, 0.12, 0.12, 0.12}
+    if eId == "SIGMA" then
+        fR = {0.95, 0.0, 1.0, 1.0, 1.0}
+        fL = {0.2, 0.2, 0.2, 0.2, 0.2}
+        if t <= 1.2 then
+            local alpha = t / 1.2
+            local startPos = Vector3.new(-0.25, 0.40, 0.45)
+            local endPos   = Vector3.new(-0.62, 0.44, 0.50)
+            offR = startPos:Lerp(endPos, alpha)
+            rotR = CFrame.Angles(math.rad(35 + alpha * 10), math.rad(-25), math.rad(15))
+        elseif t <= 2.4 then
+            local alpha = (t - 1.2) / 1.2
+            local startPos = Vector3.new(-0.62, 0.44, 0.50)
+            local endPos   = Vector3.new(-0.85, 0.40, 0.45)
+            offR = startPos:Lerp(endPos, alpha)
+            rotR = CFrame.Angles(math.rad(45 - alpha * 10), math.rad(-10 + alpha * 20), math.rad(10))
+        else
+            local alpha = math.clamp((t - 2.4) / 0.8, 0, 1)
+            local startPos = Vector3.new(-0.85, 0.40, 0.45)
+            local shhPos   = Vector3.new(-0.65, 0.60, 0.52)
+            offR = startPos:Lerp(shhPos, alpha)
+            rotR = CFrame.Angles(math.rad(75), math.rad(5), math.rad(0))
+        end
+        offL = Vector3.new(0, -0.2, 0)
+    elseif eId == "WAVE" then
+        local waveSwing = math.sin(t * 12) * 0.25
+        offR = Vector3.new(-0.2, 0.95, 0.4) + Vector3.new(waveSwing, 0, 0)
+        rotR = CFrame.Angles(math.rad(45), math.rad(waveSwing * 40), math.rad(-waveSwing * 30))
+        fR = {0.05, 0.05, 0.05, 0.05, 0.05}
+    elseif eId == "FACEPALM" then
+        offR = Vector3.new(-0.62, 0.72, 0.60)
+        rotR = CFrame.Angles(math.rad(115), math.rad(-25), math.rad(15))
+        fR = {0.35, 0.35, 0.35, 0.35, 0.35}
+    elseif eId == "CLAP" then
+        local clapSpeed = math.abs(math.sin(t * 14))
+        offL = Vector3.new(0.40 + (1 - clapSpeed) * 0.25, 0.30, 0.45)
+        offR = Vector3.new(-0.40 - (1 - clapSpeed) * 0.25, 0.30, 0.45)
+        rotL = CFrame.Angles(math.rad(25), math.rad(70), 0)
+        rotR = CFrame.Angles(math.rad(25), math.rad(-70), 0)
+        fL = {0.1, 0.1, 0.1, 0.1, 0.1}
+        fR = {0.1, 0.1, 0.1, 0.1, 0.1}
+    elseif eId == "SHRUG" then
+        offL = Vector3.new(-0.35, 0.40, 0.35)
+        offR = Vector3.new(0.35, 0.40, 0.35)
+        rotL = CFrame.Angles(math.rad(20), math.rad(35), math.rad(-45))
+        rotR = CFrame.Angles(math.rad(20), math.rad(-35), math.rad(45))
+        fL = {0.0, 0.0, 0.0, 0.0, 0.0}
+        fR = {0.0, 0.0, 0.0, 0.0, 0.0}
+    elseif eId == "HEART" then
+        offL = Vector3.new(0.28, 0.32, 0.50)
+        offR = Vector3.new(-0.28, 0.32, 0.50)
+        rotL = CFrame.Angles(math.rad(40), math.rad(50), math.rad(-30))
+        rotR = CFrame.Angles(math.rad(40), math.rad(-50), math.rad(30))
+        fL = {0.2, 0.6, 0.8, 0.9, 0.9}
+        fR = {0.2, 0.6, 0.8, 0.9, 0.9}
+    end
+    return offL, offR, rotL, rotR, fL, fR
+end
 local function startVR()
     VR_ACTIVE = true
     camera.CameraType = Enum.CameraType.Scriptable
-
     for _, w in pairs(widgetRegistry) do w.Frame.Visible = true end
     refreshMovementJoysticksVisibility()
-
     local char = player.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if root then
@@ -1322,41 +1201,30 @@ local function startVR()
         touchYaw = 0
     end
     touchPitch = 0
-
     baseGyroCF, smoothedCamRot, lastCamCF = rawGyroCF, CFrame.Angles(0, touchYaw, 0), camera.CFrame
     camera.FieldOfView = FOV_MODES[FOV_INDEX]
-    
     setupHands()
     startNetworkSync()
-
     toggleBtn.Text, toggleBtn.TextColor3 = "⏻ ВЫКЛЮЧИТЬ VR", Color3.fromRGB(255, 80, 80)
     cardStroke.Color = Color3.fromRGB(255, 80, 80)
-
-    -- // ФИЗИЧЕСКИЙ ЦИКЛ С АНТИ-ФЛИНГОМ И ПОДДЕРЖКОЙ МАШИН
     physicsLoopConnection = RunService.Stepped:Connect(function()
         pcall(function()
             local curChar = player.Character
             local curRoot = curChar and curChar:FindFirstChild("HumanoidRootPart")
             local humanoid = curChar and curChar:FindFirstChildOfClass("Humanoid")
             if not curChar or not curRoot or not humanoid then return end
-
             local isSeated = humanoid.Sit
-
-            -- 🛡️ АНТИ-СТРАТОСФЕРА: Ограничитель аномальных скоростей
             if curRoot.AssemblyLinearVelocity.Magnitude > 110 then
                 curRoot.AssemblyLinearVelocity = curRoot.AssemblyLinearVelocity.Unit * 30
             end
             if curRoot.AssemblyAngularVelocity.Magnitude > 25 then
                 curRoot.AssemblyAngularVelocity = Vector3.zero
             end
-
-            -- Автоповорот отключаем только если идем пешком
             if not isSeated then
                 humanoid.AutoRotate = false
             else
                 humanoid.AutoRotate = true
             end
-
             if isClimbingL or isClimbingR or beingGrabbedBy then
                 humanoid.PlatformStand = true
                 curRoot.AssemblyLinearVelocity = Vector3.zero
@@ -1368,21 +1236,16 @@ local function startVR()
             end
         end)
     end)
-
     mainLoopConnection = RunService.RenderStepped:Connect(function(rawDt)
         pcall(function()
             local dt = math.clamp(rawDt, 0.001, 0.05)
             local curChar = player.Character
             if not curChar then return end
-
             local curRoot = curChar:FindFirstChild("HumanoidRootPart")
             local humanoid = curChar and curChar:FindFirstChildOfClass("Humanoid")
             local head = curChar:FindFirstChild("Head")
             if not head or not curRoot or not humanoid then return end
-
             local isSeated = humanoid.Sit
-
-            -- Скрытие тела + Fling защита
             local currentTool = curChar:FindFirstChildOfClass("Tool")
             for _, item in ipairs(curChar:GetDescendants()) do
                 if item:IsA("BasePart") or item:IsA("Decal") then
@@ -1397,33 +1260,25 @@ local function startVR()
                     end
                 end
             end
-
-            -- // КАРАБКАНИЕ И ХОДЬБА (ТОЛЬКО ЕСЛИ НЕ В МАШИНЕ)
             if not EDITING_UI and not beingGrabbedBy and not isSeated then
                 if isClimbingL or isClimbingR then
                     if not climbHoldPosition or isNaN(climbHoldPosition.X) then
                         climbHoldPosition = curRoot.Position
                     end
-
                     curRoot.AssemblyLinearVelocity = Vector3.zero
                     curRoot.AssemblyAngularVelocity = Vector3.zero
-
                     local climbMove = Vector3.zero
                     local rightPlane = safeUnit(camera.CFrame.RightVector * Vector3.new(1, 0, 1), Vector3.new(1, 0, 0))
-
                     if moveForward then climbMove = climbMove + Vector3.new(0, 1, 0) end
                     if moveBackward then climbMove = climbMove - Vector3.new(0, 1, 0) end
                     if moveRight then climbMove = climbMove + rightPlane end
                     if moveLeft then climbMove = climbMove - rightPlane end
-
                     if isClimbingL then climbMove = climbMove + Vector3.new(0, -handDragL.Y * 1.8, 0) + (rightPlane * -handDragL.X * 1.8) end
                     if isClimbingR then climbMove = climbMove + Vector3.new(0, -handDragR.Y * 1.8, 0) + (rightPlane * -handDragR.X * 1.8) end
-
                     local proposedPos = climbHoldPosition
                     if climbMove.Magnitude > 0.05 then
                         proposedPos = climbHoldPosition + (climbMove.Unit * (18 * dt))
                     end
-
                     if isClimbingL and not isClimbingR and climbAnchorPosL then
                         local diff = proposedPos - climbAnchorPosL
                         if diff.Magnitude > MAX_CLIMB_REACH then
@@ -1442,15 +1297,12 @@ local function startVR()
                         end
                     end
                     climbHoldPosition = safeVec3(proposedPos, curRoot.Position)
-
                     local normL = isClimbingL and wallNormalL or Vector3.zero
                     local normR = isClimbingR and wallNormalR or Vector3.zero
                     local avgNorm = safeUnit(normL + normR, Vector3.new(0, 0, 1))
-
                     local wallRayParams = RaycastParams.new()
                     wallRayParams.FilterType = Enum.RaycastFilterType.Exclude
                     wallRayParams.FilterDescendantsInstances = {curChar, viewmodelFolder}
-
                     local wallCheck = workspace:Raycast(climbHoldPosition, -avgNorm * 4.0, wallRayParams)
                     if wallCheck then
                         local minWallDist = 1.85
@@ -1459,12 +1311,10 @@ local function startVR()
                             climbHoldPosition = wallCheck.Position + (wallCheck.Normal * minWallDist)
                         end
                     end
-
                     local horizontalNorm = safeUnit(Vector3.new(avgNorm.X, 0, avgNorm.Z), Vector3.new(0, 0, 1))
                     curRoot.CFrame = safeLookAt(climbHoldPosition, climbHoldPosition - horizontalNorm)
                 else
                     climbHoldPosition = nil
-
                     local moveZ = (moveForward and -1 or 0) + (moveBackward and 1 or 0)
                     local moveX = (moveRight and 1 or 0) + (moveLeft and -1 or 0)
                     if moveZ ~= 0 or moveX ~= 0 then
@@ -1474,14 +1324,11 @@ local function startVR()
                     else
                         humanoid:Move(Vector3.zero, false)
                     end
-
                     local look = camera.CFrame.LookVector
                     local flatLook = safeUnit(Vector3.new(look.X, 0, look.Z), Vector3.new(0, 0, -1))
                     curRoot.CFrame = safeLookAt(curRoot.Position, curRoot.Position + flatLook)
                 end
             end
-
-            -- // СИНХРОНИЗАЦИЯ: КОГДА МЕНЯ НЕСУТ
             if beingGrabbedBy and remoteVRUsers[beingGrabbedBy.Grabber] and not isSeated then
                 local grabberData = remoteVRUsers[beingGrabbedBy.Grabber]
                 local grabCF = (beingGrabbedBy.Hand == "L") and grabberData.CurrentL or grabberData.CurrentR
@@ -1493,8 +1340,6 @@ local function startVR()
                     curRoot.AssemblyAngularVelocity = Vector3.zero
                 end
             end
-
-            -- Камера
             local targetRot
             if CONTROL_MODE == "GYRO" then
                 local rx, ry, rz = baseGyroCF:ToObjectSpace(rawGyroCF):ToEulerAnglesYXZ()
@@ -1502,59 +1347,60 @@ local function startVR()
             else
                 targetRot = CFrame.Angles(0, touchYaw, 0) * CFrame.Angles(touchPitch, 0, 0)
             end
-
             smoothedCamRot = smoothedCamRot:Lerp(targetRot, 0.4)
-
             local isMoving = curRoot.AssemblyLinearVelocity.Magnitude > 1.5
             bobStep = bobStep + dt * (isMoving and 8.5 or 2.2)
             local bobX, bobY = math.sin(bobStep) * 0.018, math.cos(bobStep * 2) * 0.012
-
             local camWalkLift = (isMoving and not (isClimbingL or isClimbingR or isSeated)) and (math.abs(math.sin(bobStep)) * 0.12) or 0
             local camTiltRoll = (isMoving and not (isClimbingL or isClimbingR or isSeated)) and (math.sin(bobStep) * 0.014) or 0
             local headBaseHeight = IS_CROUCHING and -1.4 or 0.25
-
             camera.CFrame = CFrame.new(head.Position + Vector3.new(0, headBaseHeight + camWalkLift, 0)) 
                 * smoothedCamRot 
                 * CFrame.Angles(0, 0, camTiltRoll)
-                
             local camCF = camera.CFrame
-
-            -- Инерция
             local dRot = camCF:ToObjectSpace(lastCamCF)
             swayCF = swayCF:Lerp(CFrame.Angles(math.clamp(dRot.X * 0.4, -0.08, 0.08), math.clamp(dRot.Y * 0.4, -0.08, 0.08), 0), 0.25)
             lastCamCF = camCF
-
             tapAlphaL = math.clamp(tapAlphaL - dt * 4, 0, 1)
             tapAlphaR = math.clamp(tapAlphaR - dt * 4, 0, 1)
-
             currentHandOffsetL = currentHandOffsetL:Lerp(handDragL + (tapReachL * tapAlphaL), 0.28)
             currentHandOffsetR = currentHandOffsetR:Lerp(handDragR + (tapReachR * tapAlphaR), 0.28)
-
             local targetCurlsL = (grabbedDataL ~= nil or isClimbingL) and GESTURES[2].Curls or GESTURES[gestureIndexL].Curls
             local targetCurlsR = (grabbedDataR ~= nil or isClimbingR) and GESTURES[2].Curls or GESTURES[gestureIndexR].Curls
-
+            local emoteOffsetL, emoteOffsetR = Vector3.zero, Vector3.zero
+            local emoteRotL, emoteRotR = CFrame.identity, CFrame.identity
+            if activeEmoteId then
+                emoteElapsed = emoteElapsed + dt
+                local currEmoteDef = nil
+                for _, em in ipairs(EMOTES) do if em.Id == activeEmoteId then currEmoteDef = em break end end
+                if currEmoteDef and emoteElapsed > currEmoteDef.Duration then
+                    activeEmoteId = nil
+                    emoteElapsed = 0
+                    emotePlayBtn.Text = "▶️ СТАРТ ЭМОЦИИ"
+                    emotePlayBtn.TextColor3 = Color3.fromRGB(0, 255, 180)
+                else
+                    local eOffL, eOffR, eRotL, eRotR, efL, efR = evaluateEmotePose(activeEmoteId, emoteElapsed, camCF)
+                    emoteOffsetL, emoteOffsetR = eOffL, eOffR
+                    emoteRotL, emoteRotR = eRotL, eRotR
+                    targetCurlsL, targetCurlsR = efL, efR
+                end
+            end
             for i = 1, 5 do
                 currentCurlsL[i] = currentCurlsL[i] + (targetCurlsL[i] - currentCurlsL[i]) * (1 - math.exp(-22 * dt))
                 currentCurlsR[i] = currentCurlsR[i] + (targetCurlsR[i] - currentCurlsR[i]) * (1 - math.exp(-22 * dt))
             end
-
             local finalLeftCF, finalRightCF = nil, nil
-
-            local function updateArm(arm, isL, off, tRot, tAlpha, wPitch, wYaw, wRoll, isClimbing, wallAnchor, curls)
+            local function updateArm(arm, isL, off, tRot, tAlpha, wPitch, wYaw, wRoll, isClimbing, wallAnchor, curls, eOff, eRot)
                 if not arm then return end
                 local side = isL and -1 or 1
                 local userWrist = CFrame.Angles(wPitch, wYaw, wRoll or 0)
                 local baseAngle = CFrame.Angles(math.rad(-14 + off.Y * 18 - off.Z * 12), math.rad(-side * 8 + off.X * 16), math.rad(side * 6)) * userWrist
-                local finalAngle = baseAngle:Lerp(tRot, tAlpha * 0.8)
-
-                local base = camCF * swayCF * CFrame.new(side * (0.68 - (side * bobX)) + off.X, -0.85 + bobY + off.Y, -1.15 + off.Z) * finalAngle
-                
+                local finalAngle = baseAngle:Lerp(tRot, tAlpha * 0.8) * (eRot or CFrame.identity)
+                local base = camCF * swayCF * CFrame.new(side * (0.68 - (side * bobX)) + off.X + eOff.X, -0.85 + bobY + off.Y + eOff.Y, -1.15 + off.Z + eOff.Z) * finalAngle
                 if isClimbing and wallAnchor then
                     base = CFrame.new(wallAnchor) * (base - base.Position)
                 end
-
                 if isL then finalLeftCF = base else finalRightCF = base end
-
                 local f, c, cr, p, ap = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("CuffRing"), arm:FindFirstChild("Palm"), arm:FindFirstChild("ArmorPlate")
                 if f and c and p then
                     f.CFrame = base * CFrame.new(0, -0.02, 0.40)
@@ -1562,15 +1408,11 @@ local function startVR()
                     if cr then cr.CFrame = base * CFrame.new(0, -0.01, -0.16) end
                     p.CFrame = base * CFrame.new(0, 0, -0.32)
                     if ap then ap.CFrame = base * CFrame.new(0, 0.12, -0.32) end
-
                     applyFingerKinematics(arm, isL, base, curls)
                 end
             end
-
-            updateArm(leftArmModel, true, currentHandOffsetL, tapRotL, tapAlphaL, wristPitchL, wristYawL, wristRollL, isClimbingL, climbAnchorPosL, currentCurlsL)
-            updateArm(rightArmModel, false, currentHandOffsetR, tapRotR, tapAlphaR, wristPitchR, wristYawR, wristRollR, isClimbingR, climbAnchorPosR, currentCurlsR)
-
-            -- Двуручный хват оружия
+            updateArm(leftArmModel, true, currentHandOffsetL, tapRotL, tapAlphaL, wristPitchL, wristYawL, wristRollL, isClimbingL, climbAnchorPosL, currentCurlsL, emoteOffsetL, emoteRotL)
+            updateArm(rightArmModel, false, currentHandOffsetR, tapRotR, tapAlphaR, wristPitchR, wristYawR, wristRollR, isClimbingR, climbAnchorPosR, currentCurlsR, emoteOffsetR, emoteRotR)
             if currentTool then
                 local rightGrip = nil
                 for _, v in ipairs(curChar:GetDescendants()) do 
@@ -1581,7 +1423,6 @@ local function startVR()
                 end
                 local vrPalmR = rightArmModel and rightArmModel:FindFirstChild("Palm")
                 local vrPalmL = leftArmModel and leftArmModel:FindFirstChild("Palm")
-
                 if rightGrip and vrPalmR then
                     rightGrip.Part0 = vrPalmR
                     if TWO_HAND_MODE and vrPalmL then
@@ -1598,12 +1439,9 @@ local function startVR()
                     rightGrip.C1 = currentTool.Grip
                 end
             end
-
-            -- // УНИВЕРСАЛЬНЫЙ SANDBOX ХВАТ
             if OBJECT_GRAB_ENABLED then
                 local vrPalmL = leftArmModel and leftArmModel:FindFirstChild("Palm")
                 local vrPalmR = rightArmModel and rightArmModel:FindFirstChild("Palm")
-
                 if grabbedDataL and grabbedDataR and grabbedDataL.Target == grabbedDataR.Target and vrPalmL and vrPalmR then
                     local targetObj = grabbedDataL
                     local pL, pR = vrPalmL.Position, vrPalmR.Position
@@ -1612,7 +1450,6 @@ local function startVR()
                     local holdPos = midPos + (forwardDir * grabDistBoth)
                     local handRoll = math.atan2(pR.Y - pL.Y, math.max(0.1, (Vector2.new(pR.X, pR.Z) - Vector2.new(pL.X, pL.Z)).Magnitude))
                     local holdRot = safeLookAt(holdPos, holdPos + forwardDir) * CFrame.Angles(wristPitchR, wristYawR, handRoll)
-                    
                     if targetObj.Type == "PLAYER" then
                         targetObj.Part.CFrame = targetObj.Part.CFrame:Lerp(holdRot, 0.35)
                     elseif targetObj.Type == "MODEL" then
@@ -1635,7 +1472,6 @@ local function startVR()
                         end
                         grabbedDataL.Part.AssemblyLinearVelocity = Vector3.zero
                     end
-
                     if grabbedDataR and vrPalmR and grabbedDataR.Part then
                         local holdCF = vrPalmR.CFrame * CFrame.new(0, 0, -grabDistR) * CFrame.Angles(wristPitchR, wristYawR, 0)
                         if grabbedDataR.Type == "PLAYER" then
@@ -1650,29 +1486,22 @@ local function startVR()
                     end
                 end
             end
-
-            -- // СЕТЕВОЙ ПАКЕТ
             if NETWORK_ENABLED and wsConnection and tick() - lastNetSend > 0.07 and finalLeftCF and finalRightCF then
                 local pL, pR = finalLeftCF.Position, finalRightCF.Position
                 local posChanged = (pL - lastSentPosL).Magnitude > 0.04 or (pR - lastSentPosR).Magnitude > 0.04 or isClimbingL or isClimbingR or grabbedDataL ~= nil or grabbedDataR ~= nil
-
                 if posChanged or tick() - lastNetSend > 0.4 then
                     lastNetSend = tick()
                     lastSentPosL, lastSentPosR = pL, pR
-
                     pcall(function()
                         local shoulderL = curRoot.CFrame * CFrame.new(-1.1, -0.15, -0.2)
                         local shoulderR = curRoot.CFrame * CFrame.new(1.1, -0.15, -0.2)
-
                         local relL = shoulderL:ToObjectSpace(finalLeftCF)
                         local relR = shoulderR:ToObjectSpace(finalRightCF)
-
                         local lpPos, lpRot = cfToArr(relL)
                         local rpPos, rpRot = cfToArr(relR)
                         local wlpPos, wlpRot = cfToArr(finalLeftCF)
                         local wrpPos, wrpRot = cfToArr(finalRightCF)
                         local hpPos, hpRot = cfToArr(camCF)
-
                         local grabPacket = nil
                         if grabbedDataL and grabbedDataL.Type == "PLAYER" and grabbedDataR and grabbedDataR.Type == "PLAYER" and grabbedDataL.Target == grabbedDataR.Target then
                             grabPacket = {target = grabbedDataL.Target.UserId, hand = "BOTH", dist = r2(grabDistBoth)}
@@ -1681,15 +1510,12 @@ local function startVR()
                         elseif grabbedDataR and grabbedDataR.Type == "PLAYER" then
                             grabPacket = {target = grabbedDataR.Target.UserId, hand = "R", dist = r2(grabDistR)}
                         end
-
                         local objLData = grabbedDataL and {Name = grabbedDataL.Name, Type = grabbedDataL.Type, UserId = grabbedDataL.UserId, Dist = r2(grabDistL)} or nil
                         local objRData = grabbedDataR and {Name = grabbedDataR.Name, Type = grabbedDataR.Type, UserId = grabbedDataR.UserId, Dist = r2(grabDistR)} or nil
-
                         local compressedCurlsL = {r2(currentCurlsL[1]), r2(currentCurlsL[2]), r2(currentCurlsL[3]), r2(currentCurlsL[4]), r2(currentCurlsL[5])}
                         local compressedCurlsR = {r2(currentCurlsR[1]), r2(currentCurlsR[2]), r2(currentCurlsR[3]), r2(currentCurlsR[4]), r2(currentCurlsR[5])}
-
                         local packet = {
-                            s = "VR58",
+                            s = "VR59",
                             u = player.UserId,
                             un = player.Name,
                             st = HAND_STYLE,
@@ -1714,8 +1540,6 @@ local function startVR()
                     end)
                 end
             end
-
-            -- // РЕНДЕРИНГ ДРУГИХ ИГРОКОВ (60-144 FPS)
             local interpFactor = 1 - math.exp(-18 * dt)
             for uId, uData in pairs(remoteVRUsers) do
                 if tick() - uData.LastTick > 7 then
@@ -1726,20 +1550,17 @@ local function startVR()
                     uData.CurrentL = uData.CurrentL:Lerp(uData.TargetL, interpFactor)
                     uData.CurrentR = uData.CurrentR:Lerp(uData.TargetR, interpFactor)
                     uData.CurrentHead = uData.CurrentHead:Lerp(uData.TargetHead, interpFactor)
-
                     if uData.Visor then
                         local vf, vg = uData.Visor:FindFirstChild("VisorFrame"), uData.Visor:FindFirstChild("VisorGlass")
                         local vCF = uData.CurrentHead * CFrame.new(0, 0.05, -0.3)
                         if vf then vf.CFrame = vCF end
                         if vg then vg.CFrame = vCF * CFrame.new(0, 0, -0.3) end
                     end
-
                     local function applyRemotePart(arm, isL, baseCF, isClimbing, wallAnchor, curls)
                         local finalBase = baseCF
                         if isClimbing and wallAnchor then
                             finalBase = CFrame.new(wallAnchor) * (baseCF - baseCF.Position)
                         end
-
                         local f, c, cr, p, ap = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("CuffRing"), arm:FindFirstChild("Palm"), arm:FindFirstChild("ArmorPlate")
                         if f and c and p then
                             f.CFrame = finalBase * CFrame.new(0, -0.02, 0.40)
@@ -1747,15 +1568,11 @@ local function startVR()
                             if cr then cr.CFrame = finalBase * CFrame.new(0, -0.01, -0.16) end
                             p.CFrame = finalBase * CFrame.new(0, 0, -0.32)
                             if ap then ap.CFrame = finalBase * CFrame.new(0, 0.12, -0.32) end
-
                             applyFingerKinematics(arm, isL, finalBase, curls or {0.12, 0.12, 0.12, 0.12, 0.12})
                         end
                     end
-
                     applyRemotePart(uData.Left, true, uData.CurrentL, uData.ClimbL, uData.AnchorL, uData.CurlsL)
                     applyRemotePart(uData.Right, false, uData.CurrentR, uData.ClimbR, uData.AnchorR, uData.CurlsR)
-
-                    -- Синхронизация удержания предметов
                     local function syncRemoteHeldItem(objData, handCF)
                         if not objData or not objData.Name then return end
                         local target = nil
@@ -1765,7 +1582,6 @@ local function startVR()
                         else
                             target = workspace:FindFirstChild(objData.Name, true)
                         end
-
                         if target and target ~= player.Character then
                             local d = objData.Dist or 4.0
                             local targetCF = handCF * CFrame.new(0, 0, -d)
@@ -1778,7 +1594,6 @@ local function startVR()
                             end
                         end
                     end
-
                     if uData.HeldObjL then syncRemoteHeldItem(uData.HeldObjL, uData.CurrentL) end
                     if uData.HeldObjR then syncRemoteHeldItem(uData.HeldObjR, uData.CurrentR) end
                 end
@@ -1786,10 +1601,11 @@ local function startVR()
         end)
     end)
 end
-
 local function stopVR()
     pcall(function()
         VR_ACTIVE = false
+        activeEmoteId = nil
+        emoteElapsed = 0
         for _, w in pairs(widgetRegistry) do w.Frame.Visible = false end
         moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
         grabbedDataL, grabbedDataR = nil, nil
@@ -1800,17 +1616,13 @@ local function stopVR()
         screenTouchL, screenTouchR = nil, nil
         handDragL, handDragR = Vector3.zero, Vector3.zero
         beingGrabbedBy = nil
-
         updateGrabBtnVisual(true)
         updateGrabBtnVisual(false)
-
         if mainLoopConnection then mainLoopConnection:Disconnect() mainLoopConnection = nil end
         if physicsLoopConnection then physicsLoopConnection:Disconnect() physicsLoopConnection = nil end
         cleanupNet()
-
         netStatus.Text = "⚪ VR: Готов к запуску"
         netStatus.TextColor3 = Color3.fromRGB(180, 190, 205)
-
         camera.CameraType, camera.FieldOfView = Enum.CameraType.Custom, 70
         local curChar = player.Character
         if curChar then
@@ -1827,12 +1639,9 @@ local function stopVR()
         toggleBtn.Text, toggleBtn.TextColor3, cardStroke.Color = "⏻ ВКЛЮЧИТЬ VR", Color3.fromRGB(0, 255, 180), Color3.fromRGB(0, 255, 180)
     end)
 end
-
--- // 11. ОБРАБОТЧИКИ НАЖАТИЙ
 toggleBtn.Activated:Connect(function() 
     if VR_ACTIVE then stopVR() else startVR() end 
 end)
-
 climbToggleBtn.Activated:Connect(function()
     CLIMB_ENABLED = not CLIMB_ENABLED
     climbToggleBtn.Text = CLIMB_ENABLED and "🧗 КАРАБКАНИЕ: ВКЛ" or "🧗 КАРАБКАНИЕ: ВЫКЛ"
@@ -1845,39 +1654,34 @@ climbToggleBtn.Activated:Connect(function()
         updateGrabBtnVisual(false)
     end
 end)
-
 handCtrlBtn.Activated:Connect(function()
     if HAND_INPUT_MODE == "DEFAULT" then
         HAND_INPUT_MODE = "SCREEN_DRAG"
         handCtrlBtn.Text = "📱 ДЖОЙСТИК: ПО ЭКРАНУ"
         handCtrlBtn.TextColor3 = Color3.fromRGB(0, 255, 255)
     else
-        HAND_INPUT_MODE = "DEFAULT"
+        HAND_INPUT_MODE == "DEFAULT"
         handCtrlBtn.Text = "🕹️ ДЖОЙСТИК: ПО УМОЛЧ."
         handCtrlBtn.TextColor3 = Color3.fromRGB(0, 255, 200)
     end
     refreshMovementJoysticksVisibility()
 end)
-
 modeBtn.Activated:Connect(function()
     CONTROL_MODE = (CONTROL_MODE == "TOUCH") and "GYRO" or "TOUCH"
     modeBtn.Text = CONTROL_MODE == "GYRO" and "📱 ПОВОРОТ: ТЕЛЕФОНОМ" or "👆 ПОВОРОТ: ПАЛЬЦЕМ"
     modeBtn.TextColor3 = CONTROL_MODE == "GYRO" and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(255, 185, 40)
     if CONTROL_MODE == "GYRO" then baseGyroCF = rawGyroCF end
 end)
-
 handStyleBtn.Activated:Connect(function()
     HAND_STYLE = HAND_STYLE % #STYLES + 1
     handStyleBtn.Text = "🎨 СТИЛЬ: " .. HAND_STYLE .. "/15 " .. STYLES[HAND_STYLE].Name
     if VR_ACTIVE then setupHands() end
 end)
-
 twoHandBtn.Activated:Connect(function()
     TWO_HAND_MODE = not TWO_HAND_MODE
     twoHandBtn.Text = TWO_HAND_MODE and "⚔️ ХВАТ: 2 РУКИ" or "🗡️ ХВАТ: 1 РУКА"
     twoHandBtn.TextColor3 = TWO_HAND_MODE and Color3.fromRGB(0, 255, 180) or Color3.fromRGB(255, 170, 50)
 end)
-
 grabToggleBtn.Activated:Connect(function()
     OBJECT_GRAB_ENABLED = not OBJECT_GRAB_ENABLED
     grabToggleBtn.Text = OBJECT_GRAB_ENABLED and "🖐️ ХВАТ ПРЕДМЕТОВ: ВКЛ" or "🖐️ ХВАТ ПРЕДМЕТОВ: ВЫКЛ"
@@ -1888,7 +1692,6 @@ grabToggleBtn.Activated:Connect(function()
         updateGrabBtnVisual(false)
     end
 end)
-
 resetDistBtn.Activated:Connect(function()
     grabDistL = 4.0
     grabDistR = 4.0
@@ -1896,18 +1699,32 @@ resetDistBtn.Activated:Connect(function()
     resetDistBtn.Text = "✨ СБРОШЕНО"
     task.delay(0.4, function() resetDistBtn.Text = "📏 СБРОС ЗУМА (4м)" end)
 end)
-
+emoteSelectBtn.Activated:Connect(function()
+    currentEmoteIndex = (currentEmoteIndex % #EMOTES) + 1
+    emoteSelectBtn.Text = "🎭 " .. EMOTES[currentEmoteIndex].Name
+end)
+emotePlayBtn.Activated:Connect(function()
+    if not VR_ACTIVE then return end
+    activeEmoteId = EMOTES[currentEmoteIndex].Id
+    emoteElapsed = 0
+    emotePlayBtn.Text = "🔥 ИГРАЕТ..."
+    emotePlayBtn.TextColor3 = Color3.fromRGB(255, 220, 0)
+end)
+emoteStopBtn.Activated:Connect(function()
+    activeEmoteId = nil
+    emoteElapsed = 0
+    emotePlayBtn.Text = "▶️ СТАРТ ЭМОЦИИ"
+    emotePlayBtn.TextColor3 = Color3.fromRGB(0, 255, 180)
+end)
 uiEditBtn.Activated:Connect(function()
     EDITING_UI = not EDITING_UI
     editInspector.Visible = EDITING_UI
-
     for _, w in pairs(widgetRegistry) do
         w.Stroke.Enabled = EDITING_UI
         w.Stroke.Color = Color3.fromRGB(0, 255, 255)
         w.Frame.BackgroundTransparency = EDITING_UI and 0.45 or w.DefaultTrans
     end
     refreshMovementJoysticksVisibility()
-
     uiEditBtn.Text = EDITING_UI and "💾 СОХРАНИТЬ GUI" or "📍 РЕДАКТОР GUI"
     uiEditBtn.TextColor3 = EDITING_UI and Color3.fromRGB(0, 255, 140) or Color3.fromRGB(0, 200, 255)
     if not EDITING_UI then
@@ -1917,12 +1734,10 @@ uiEditBtn.Activated:Connect(function()
         moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
     end
 end)
-
 netToggleBtn.Activated:Connect(function()
     NETWORK_ENABLED = not NETWORK_ENABLED
     netToggleBtn.Text = NETWORK_ENABLED and "🌐 СЕТЬ: ВКЛЮЧЕНА" or "🌐 СЕТЬ: ВЫКЛЮЧЕНА"
     netToggleBtn.TextColor3 = NETWORK_ENABLED and Color3.fromRGB(0, 255, 180) or Color3.fromRGB(255, 100, 100)
-    
     if not NETWORK_ENABLED then
         cleanupNet()
         if VR_ACTIVE then 
@@ -1933,13 +1748,11 @@ netToggleBtn.Activated:Connect(function()
         if VR_ACTIVE then startNetworkSync() end
     end
 end)
-
 crouchBtn.Activated:Connect(function()
     IS_CROUCHING = not IS_CROUCHING
     crouchBtn.Text = IS_CROUCHING and "🚶 ВСТАТЬ" or "🧎 ПРИСЕСТЬ"
     crouchBtn.TextColor3 = IS_CROUCHING and Color3.fromRGB(0, 255, 180) or Color3.fromRGB(180, 220, 255)
 end)
-
 calibBtn.Activated:Connect(function()
     local curChar = player.Character
     local curRoot = curChar and curChar:FindFirstChild("HumanoidRootPart")
@@ -1952,11 +1765,9 @@ calibBtn.Activated:Connect(function()
     touchPitch = 0
     baseGyroCF = rawGyroCF
     smoothedCamRot = CFrame.Angles(0, touchYaw, 0)
-    
     calibBtn.Text = "✨ ЦЕНТР ВЫРОВНЕН"
     task.delay(0.4, function() calibBtn.Text = "🎯 ЦЕНТР КАМЕРЫ" end)
 end)
-
 fovBtn.Activated:Connect(function()
     FOV_INDEX = FOV_INDEX % #FOV_MODES + 1
     local targetFOV = FOV_MODES[FOV_INDEX]
@@ -1964,18 +1775,15 @@ fovBtn.Activated:Connect(function()
     camera.FieldOfView = targetFOV
     if VR_ACTIVE then TweenService:Create(camera, TweenInfo.new(0.2), {FieldOfView = targetFOV}):Play() end
 end)
-
 minBtn.Activated:Connect(function()
     mainCard.Visible = false
     floatOrb.Visible = true
 end)
-
 closeBtn.Activated:Connect(function()
     stopVR()
     if gyroConnection then gyroConnection:Disconnect() end
     screenGui:Destroy()
 end)
-
 player.CharacterAdded:Connect(function()
     if VR_ACTIVE then
         task.wait(0.8)
