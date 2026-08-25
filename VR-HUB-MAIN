@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v51.0 OMEGA (PERFECT CLIMBING, NO TELEPORT & CLEAN UI)
+-- // 👑 LUXURY VR ENGINE v52.0 OMEGA (ANTI-GRAVITY WALL LOCK & INSTANT CLIMB)
 
 -- ==============================================================================
 -- 🚀 ТВОЙ ЛИЧНЫЙ ПРИВАТНЫЙ WEBSOCKET СЕРВЕР:
@@ -16,9 +16,9 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 -- // 1. ОЧИСТКА ПРЕДЫДУЩИХ ВЕРСИЙ
-local GUI_NAME = "LuxuryVR_V51_Master"
+local GUI_NAME = "LuxuryVR_V52_Master"
 pcall(function()
-    for _, name in ipairs({"LuxuryVR_V51_Master", "LuxuryVR_V50_Master", "LuxuryVR_V49_Master", "LuxuryVR_V48_Master", "LuxuryVR_V47_Master"}) do
+    for _, name in ipairs({"LuxuryVR_V52_Master", "LuxuryVR_V51_Master", "LuxuryVR_V50_Master", "LuxuryVR_V49_Master", "LuxuryVR_V48_Master", "LuxuryVR_V47_Master"}) do
         if CoreGui:FindFirstChild(name) then CoreGui[name]:Destroy() end
         if player.PlayerGui:FindFirstChild(name) then player.PlayerGui[name]:Destroy() end
     end
@@ -52,10 +52,11 @@ local grabbedDataL = nil
 local grabbedDataR = nil
 local beingGrabbedBy = nil
 
--- Стабильное карабкание
+-- Антигравитационное карабкание
 local isClimbingL, isClimbingR = false, false
 local climbAnchorPosL, climbAnchorPosR = nil, nil
 local wallNormalL, wallNormalR = Vector3.zero, Vector3.zero
+local climbHoldPosition = nil -- Замороженная позиция тела в воздухе
 
 -- Физика и ввод
 local moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
@@ -107,7 +108,7 @@ local STYLES = {
     {Name = "ЭЛЕКТРО ШТОРМ", Col = Color3.fromRGB(20, 30, 50), Cuff = Color3.fromRGB(0, 160, 255), Accent = Color3.fromRGB(255, 255, 255), Mat = Enum.Material.Neon, Light = Color3.fromRGB(0, 180, 255)}
 }
 
--- // ФУНКЦИЯ ОБНОВЛЕНИЯ ЦВЕТА КНОПКИ ХВАТА (ЧТОБЫ НЕ ЗАЕДАЛА)
+-- // ОБНОВЛЕНИЕ ЦВЕТА КНОПКИ ХВАТА
 local function updateGrabBtnVisual(isLeft)
     local btn = isLeft and grabBtnL or grabBtnR
     local isClimbing = isLeft and isClimbingL or isClimbingR
@@ -298,7 +299,7 @@ makeFreeDraggable(mainCard, dragHandle)
 
 local title = Instance.new("TextLabel", dragHandle)
 title.Size, title.Position = UDim2.new(1, 0, 0, 20), UDim2.new(0, 14, 0, 5)
-title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v51.0 (ULTRA FIX)"
+title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v52.0 (OMEGA)"
 title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 11
 title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -446,9 +447,9 @@ local function findClimbWallTarget(palmPart)
     rayParams.FilterDescendantsInstances = {player.Character, viewmodelFolder}
 
     local dirs = {
-        camera.CFrame.LookVector * 4.0,
-        palmPart.CFrame.LookVector * 3.5,
-        (camera.CFrame.LookVector + palmPart.CFrame.LookVector).Unit * 3.5
+        camera.CFrame.LookVector * 4.5,
+        palmPart.CFrame.LookVector * 4.0,
+        (camera.CFrame.LookVector + palmPart.CFrame.LookVector).Unit * 4.0
     }
 
     for _, dir in ipairs(dirs) do
@@ -604,10 +605,11 @@ local function createIndependentHandPad(isLeft)
         grabDistBoth = math.clamp(grabDistBoth - 1.2, 1.5, 35)
     end)
 
-    -- // ЧЕТКИЙ ОБРАБОТЧИК ХВАТА И КАРАБКАНИЯ
+    -- Хват и Карабкание
     grabBtn.Activated:Connect(function()
         if not VR_ACTIVE or EDITING_UI then return end
         local palm = isLeft and (leftArmModel and leftArmModel:FindFirstChild("Palm")) or (rightArmModel and rightArmModel:FindFirstChild("Palm"))
+        local curRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 
         if isLeft then
             if isClimbingL or grabbedDataL then
@@ -619,6 +621,9 @@ local function createIndependentHandPad(isLeft)
                         isClimbingL = true
                         climbAnchorPosL = wPos
                         wallNormalL = wNorm
+                        if curRoot and not (isClimbingR and climbHoldPosition) then
+                            climbHoldPosition = curRoot.Position
+                        end
                     end
                 end
                 if not isClimbingL then
@@ -637,6 +642,9 @@ local function createIndependentHandPad(isLeft)
                         isClimbingR = true
                         climbAnchorPosR = wPos
                         wallNormalR = wNorm
+                        if curRoot and not (isClimbingL and climbHoldPosition) then
+                            climbHoldPosition = curRoot.Position
+                        end
                     end
                 end
                 if not isClimbingR then
@@ -882,7 +890,7 @@ local function startNetworkSync()
                 updateNetCountLabel()
 
                 pcall(function()
-                    wsConnection:Send(HttpService:JSONEncode({s = "VR51_HELLO", u = player.UserId, un = player.Name}))
+                    wsConnection:Send(HttpService:JSONEncode({s = "VR52_HELLO", u = player.UserId, un = player.Name}))
                 end)
 
                 heartbeatThread = task.spawn(function()
@@ -897,7 +905,7 @@ local function startNetworkSync()
                         local data = HttpService:JSONDecode(msg)
                         if type(data) ~= "table" or data.u == player.UserId then return end
 
-                        if data.s == "VR51" or data.s == "VR50" or data.s == "VR49" or data.s == "VR47" then
+                        if data.s == "VR52" or data.s == "VR51" or data.s == "VR50" or data.s == "VR49" or data.s == "VR47" then
                             local remotePlr = Players:GetPlayerByUserId(data.u) or (data.un and Players:FindFirstChild(data.un))
                             
                             if not remoteVRUsers[data.u] then
@@ -1015,6 +1023,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
                     camTouchLastPos = Vector2.new(input.Position.X, input.Position.Y)
                 end
             else
+                local curRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
                 if isLeftSide and not screenTouchL then
                     screenTouchL = input
                     screenTouchLStart = input.Position
@@ -1025,6 +1034,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
                             isClimbingL = true
                             climbAnchorPosL = wPos
                             wallNormalL = wNorm
+                            if curRoot and not (isClimbingR and climbHoldPosition) then
+                                climbHoldPosition = curRoot.Position
+                            end
                             updateGrabBtnVisual(true)
                         end
                     end
@@ -1038,6 +1050,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
                             isClimbingR = true
                             climbAnchorPosR = wPos
                             wallNormalR = wNorm
+                            if curRoot and not (isClimbingL and climbHoldPosition) then
+                                climbHoldPosition = curRoot.Position
+                            end
                             updateGrabBtnVisual(false)
                         end
                     end
@@ -1147,7 +1162,7 @@ local function startVR()
     toggleBtn.Text, toggleBtn.TextColor3 = "⏻ ВЫКЛЮЧИТЬ VR", Color3.fromRGB(255, 80, 80)
     cardStroke.Color = Color3.fromRGB(255, 80, 80)
 
-    -- // ФИЗИЧЕСКИЙ ЦИКЛ (БЛОКИРУЕТ ГРАВИТАЦИЮ, БЕЗ КОНФЛИКТОВ С CFRAME)
+    -- // ФИЗИЧЕСКИЙ ЦИКЛ
     physicsLoopConnection = RunService.Stepped:Connect(function()
         pcall(function()
             local curChar = player.Character
@@ -1189,52 +1204,62 @@ local function startVR()
                 end
             end
 
-            -- // КАРАБКАНИЕ И ПЕРЕДВИЖЕНИЕ (ЕДИНЫЙ ЦИКЛ БЕЗ ТЕЛЕПОРТАЦИИ)
+            -- // 🧗 АНТИГРАВИТАЦИОННОЕ КАРАБКАНИЕ И ПЕРЕДВИЖЕНИЕ
             if not EDITING_UI then
                 if isClimbingL or isClimbingR then
-                    -- 1. Вычисляем вектор движения по стене
+                    if not climbHoldPosition then
+                        climbHoldPosition = curRoot.Position
+                    end
+
+                    curRoot.AssemblyLinearVelocity = Vector3.zero
+                    curRoot.AssemblyAngularVelocity = Vector3.zero
+
                     local climbMove = Vector3.zero
                     local rightPlane = (camera.CFrame.RightVector * Vector3.new(1, 0, 1)).Unit
 
+                    -- 1. Управление D-Pad (Вверх/Вниз/Влево/Вправо)
                     if moveForward then climbMove = climbMove + Vector3.new(0, 1, 0) end
                     if moveBackward then climbMove = climbMove - Vector3.new(0, 1, 0) end
                     if moveRight then climbMove = climbMove + rightPlane end
                     if moveLeft then climbMove = climbMove - rightPlane end
 
-                    -- Добавляем тягу жестов пальцами
+                    -- 2. Управление жестами (палец вниз = тело вверх)
                     if isClimbingL then
-                        climbMove = climbMove + Vector3.new(0, -handDragL.Y * 1.6, 0) + (rightPlane * -handDragL.X * 1.6)
+                        climbMove = climbMove + Vector3.new(0, -handDragL.Y * 1.8, 0) + (rightPlane * -handDragL.X * 1.8)
                     end
                     if isClimbingR then
-                        climbMove = climbMove + Vector3.new(0, -handDragR.Y * 1.6, 0) + (rightPlane * -handDragR.X * 1.6)
+                        climbMove = climbMove + Vector3.new(0, -handDragR.Y * 1.8, 0) + (rightPlane * -handDragR.X * 1.8)
                     end
 
+                    -- Плавное изменение позиции без просадки
                     if climbMove.Magnitude > 0.05 then
-                        local newPos = curRoot.Position + (climbMove.Unit * (14 * dt))
+                        climbHoldPosition = climbHoldPosition + (climbMove.Unit * (18 * dt))
+                    end
 
-                        -- Проверка стены (защита от проваливания)
-                        local avgNorm = ((isClimbingL and wallNormalL or Vector3.zero) + (isClimbingR and wallNormalR or Vector3.zero)).Unit
+                    -- Упор в стену (защита от проваливания)
+                    local avgNorm = ((isClimbingL and wallNormalL or Vector3.zero) + (isClimbingR and wallNormalR or Vector3.zero)).Unit
+                    if avgNorm.Magnitude > 0.05 then
                         local wallRayParams = RaycastParams.new()
                         wallRayParams.FilterType = Enum.RaycastFilterType.Exclude
                         wallRayParams.FilterDescendantsInstances = {curChar, viewmodelFolder}
 
-                        local wallCheck = workspace:Raycast(newPos, -avgNorm * 3.5, wallRayParams)
+                        local wallCheck = workspace:Raycast(climbHoldPosition, -avgNorm * 4.0, wallRayParams)
                         if wallCheck then
                             local minWallDist = 1.85
-                            local curDist = (wallCheck.Position - newPos).Magnitude
+                            local curDist = (wallCheck.Position - climbHoldPosition).Magnitude
                             if curDist < minWallDist then
-                                newPos = wallCheck.Position + (wallCheck.Normal * minWallDist)
+                                climbHoldPosition = wallCheck.Position + (wallCheck.Normal * minWallDist)
                             end
                         end
 
                         local lookDir = -Vector3.new(avgNorm.X, 0, avgNorm.Z).Unit
-                        curRoot.CFrame = CFrame.lookAt(newPos, newPos + lookDir)
+                        curRoot.CFrame = CFrame.lookAt(climbHoldPosition, climbHoldPosition + lookDir)
                     else
-                        local avgNorm = ((isClimbingL and wallNormalL or Vector3.zero) + (isClimbingR and wallNormalR or Vector3.zero)).Unit
-                        local lookDir = -Vector3.new(avgNorm.X, 0, avgNorm.Z).Unit
-                        curRoot.CFrame = CFrame.lookAt(curRoot.Position, curRoot.Position + lookDir)
+                        curRoot.CFrame = CFrame.new(climbHoldPosition) * (curRoot.CFrame - curRoot.Position)
                     end
                 else
+                    climbHoldPosition = nil
+
                     -- Обычная ходьба
                     local moveZ = (moveForward and -1 or 0) + (moveBackward and 1 or 0)
                     local moveX = (moveRight and 1 or 0) + (moveLeft and -1 or 0)
@@ -1444,7 +1469,7 @@ local function startVR()
                     local objRData = grabbedDataR and {Name = grabbedDataR.Name, Type = grabbedDataR.Type, Dist = grabDistR} or nil
 
                     local packet = {
-                        s = "VR51",
+                        s = "VR52",
                         u = player.UserId,
                         un = player.Name,
                         st = HAND_STYLE,
@@ -1554,6 +1579,7 @@ local function stopVR()
         grabbedDataL, grabbedDataR = nil, nil
         isClimbingL, isClimbingR = false, false
         climbAnchorPosL, climbAnchorPosR = nil, nil
+        climbHoldPosition = nil
         camTouchInput, camTouchLastPos = nil, nil
         screenTouchL, screenTouchR = nil, nil
         handDragL, handDragR = Vector3.zero, Vector3.zero
@@ -1600,6 +1626,7 @@ climbToggleBtn.Activated:Connect(function()
     if not CLIMB_ENABLED then
         isClimbingL, isClimbingR = false, false
         climbAnchorPosL, climbAnchorPosR = nil, nil
+        climbHoldPosition = nil
         updateGrabBtnVisual(true)
         updateGrabBtnVisual(false)
     end
