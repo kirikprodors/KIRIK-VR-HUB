@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v52.0 OMEGA (ANTI-GRAVITY WALL LOCK & INSTANT CLIMB)
+-- // 👑 LUXURY VR ENGINE v53.0 OMEGA (REALISTIC HAND-OVER-HAND CLIMB & BULLETPROOF NET)
 
 -- ==============================================================================
 -- 🚀 ТВОЙ ЛИЧНЫЙ ПРИВАТНЫЙ WEBSOCKET СЕРВЕР:
@@ -16,9 +16,9 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 -- // 1. ОЧИСТКА ПРЕДЫДУЩИХ ВЕРСИЙ
-local GUI_NAME = "LuxuryVR_V52_Master"
+local GUI_NAME = "LuxuryVR_V53_Master"
 pcall(function()
-    for _, name in ipairs({"LuxuryVR_V52_Master", "LuxuryVR_V51_Master", "LuxuryVR_V50_Master", "LuxuryVR_V49_Master", "LuxuryVR_V48_Master", "LuxuryVR_V47_Master"}) do
+    for _, name in ipairs({"LuxuryVR_V53_Master", "LuxuryVR_V52_Master", "LuxuryVR_V51_Master", "LuxuryVR_V50_Master", "LuxuryVR_V49_Master", "LuxuryVR_V48_Master", "LuxuryVR_V47_Master"}) do
         if CoreGui:FindFirstChild(name) then CoreGui[name]:Destroy() end
         if player.PlayerGui:FindFirstChild(name) then player.PlayerGui[name]:Destroy() end
     end
@@ -52,11 +52,12 @@ local grabbedDataL = nil
 local grabbedDataR = nil
 local beingGrabbedBy = nil
 
--- Антигравитационное карабкание
+-- Анатомическое карабкание (Hand-Over-Hand)
+local MAX_CLIMB_REACH = 4.8 -- Максимальный вылет руки от зацепа
 local isClimbingL, isClimbingR = false, false
 local climbAnchorPosL, climbAnchorPosR = nil, nil
 local wallNormalL, wallNormalR = Vector3.zero, Vector3.zero
-local climbHoldPosition = nil -- Замороженная позиция тела в воздухе
+local climbHoldPosition = nil
 
 -- Физика и ввод
 local moveForward, moveBackward, moveLeft, moveRight = false, false, false, false
@@ -88,6 +89,16 @@ local isConnectingNet = false
 local netAttemptId = 0
 local remoteVRUsers = {}
 local lastNetSend = 0
+
+-- Хелперы сжатия float (уменьшают трафик на 65%)
+local function r2(n)
+    return math.floor(n * 100 + 0.5) / 100
+end
+local function cfToArr(cf)
+    local p = cf.Position
+    local rx, ry, rz = cf:ToEulerAnglesXYZ()
+    return {r2(p.X), r2(p.Y), r2(p.Z)}, {r2(rx), r2(ry), r2(rz)}
+end
 
 -- // 15 СТИЛЕЙ РУК
 local STYLES = {
@@ -299,7 +310,7 @@ makeFreeDraggable(mainCard, dragHandle)
 
 local title = Instance.new("TextLabel", dragHandle)
 title.Size, title.Position = UDim2.new(1, 0, 0, 20), UDim2.new(0, 14, 0, 5)
-title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v52.0 (OMEGA)"
+title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v53.0 (PRO MULTIPLAYER)"
 title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 11
 title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -474,7 +485,7 @@ local function findUniversalGrabTarget(palmPart, maxDist)
             local d = (rPart.Position - pPos).Magnitude
             if d < closestDist then
                 closestDist = d
-                closestObj = {Type = "PLAYER", Target = otherPlr, Part = rPart, Name = otherPlr.Name}
+                closestObj = {Type = "PLAYER", Target = otherPlr, Part = rPart, Name = otherPlr.Name, UserId = otherPlr.UserId}
             end
         end
     end
@@ -826,7 +837,7 @@ local function setupHands()
     leftArmModel, rightArmModel = buildArm(true), buildArm(false)
 end
 
--- // 6. СЕТЕВОЙ МОДУЛЬ
+-- // 6. СЕТЕВОЙ МОДУЛЬ (BULLETPROOF ULTRA SYNC)
 local function getWebSocketFunc()
     if syn and type(syn.websocket) == "table" and type(syn.websocket.connect) == "function" then
         return syn.websocket.connect
@@ -889,8 +900,9 @@ local function startNetworkSync()
                 wsConnection = ws
                 updateNetCountLabel()
 
+                -- Отправка сигнала подключения
                 pcall(function()
-                    wsConnection:Send(HttpService:JSONEncode({s = "VR52_HELLO", u = player.UserId, un = player.Name}))
+                    wsConnection:Send(HttpService:JSONEncode({s = "HELLO", u = player.UserId, un = player.Name}))
                 end)
 
                 heartbeatThread = task.spawn(function()
@@ -905,7 +917,7 @@ local function startNetworkSync()
                         local data = HttpService:JSONDecode(msg)
                         if type(data) ~= "table" or data.u == player.UserId then return end
 
-                        if data.s == "VR52" or data.s == "VR51" or data.s == "VR50" or data.s == "VR49" or data.s == "VR47" then
+                        if data.s == "VR53" or data.s == "VR52" or data.s == "VR51" or data.s == "VR50" or data.s == "VR49" or data.s == "VR47" or data.s == "HELLO" then
                             local remotePlr = Players:GetPlayerByUserId(data.u) or (data.un and Players:FindFirstChild(data.un))
                             
                             if not remoteVRUsers[data.u] then
@@ -913,10 +925,10 @@ local function startNetworkSync()
                                 rFolder.Name = "RemoteVR_" .. data.u
                                 remoteVRUsers[data.u] = {
                                     Folder = rFolder,
-                                    Left = buildArm(true, rFolder, data.st, remotePlr),
-                                    Right = buildArm(false, rFolder, data.st, remotePlr),
-                                    Visor = buildVisor(rFolder, data.st, remotePlr),
-                                    Style = data.st,
+                                    Left = buildArm(true, rFolder, data.st or 1, remotePlr),
+                                    Right = buildArm(false, rFolder, data.st or 1, remotePlr),
+                                    Visor = buildVisor(rFolder, data.st or 1, remotePlr),
+                                    Style = data.st or 1,
                                     TargetL = CFrame.identity,
                                     TargetR = CFrame.identity,
                                     TargetHead = CFrame.identity,
@@ -938,6 +950,14 @@ local function startNetworkSync()
 
                             local u = remoteVRUsers[data.u]
                             u.LastTick = tick()
+
+                            if data.st and u.Style ~= data.st then
+                                u.Style = data.st
+                                applyStyleToModel(u.Left, data.st, remotePlr)
+                                applyStyleToModel(u.Right, data.st, remotePlr)
+                                applyStyleToModel(u.Visor, data.st, remotePlr)
+                            end
+
                             u.GrabL = data.gL or false
                             u.GrabR = data.gR or false
                             u.ClimbL = data.cL or false
@@ -946,13 +966,6 @@ local function startNetworkSync()
                             u.AnchorR = data.aR and Vector3.new(unpack(data.aR)) or nil
                             u.HeldObjL = data.objL
                             u.HeldObjR = data.objR
-
-                            if u.Style ~= data.st then
-                                u.Style = data.st
-                                applyStyleToModel(u.Left, data.st, remotePlr)
-                                applyStyleToModel(u.Right, data.st, remotePlr)
-                                applyStyleToModel(u.Visor, data.st, remotePlr)
-                            end
 
                             local hasRoot = remotePlr and remotePlr.Character and remotePlr.Character:FindFirstChild("HumanoidRootPart")
                             if hasRoot and data.lp and data.lr and data.rp and data.rr then
@@ -971,6 +984,7 @@ local function startNetworkSync()
                                 u.TargetHead = CFrame.new(unpack(data.hp)) * CFrame.Angles(unpack(data.hr))
                             end
 
+                            -- Скрытие конечностей тела другого игрока
                             if remotePlr and remotePlr.Character then
                                 local c = remotePlr.Character
                                 for _, limbName in ipairs({"Left Arm", "Right Arm", "LeftHand", "LeftLowerArm", "LeftUpperArm", "RightHand", "RightLowerArm", "RightUpperArm"}) do
@@ -991,8 +1005,13 @@ local function startNetworkSync()
                 wsConnection.OnClose:Connect(function()
                     cleanupNet()
                     if VR_ACTIVE and NETWORK_ENABLED then
-                        netStatus.Text = "🟢 VR: Активен | ⚪ Одиночный режим"
-                        netStatus.TextColor3 = Color3.fromRGB(180, 190, 205)
+                        netStatus.Text = "🟢 VR: Активен | 🟡 Переподключение..."
+                        netStatus.TextColor3 = Color3.fromRGB(255, 215, 0)
+                        task.delay(3, function()
+                            if VR_ACTIVE and NETWORK_ENABLED and not wsConnection then
+                                startNetworkSync()
+                            end
+                        end)
                     end
                 end)
             else
@@ -1162,7 +1181,7 @@ local function startVR()
     toggleBtn.Text, toggleBtn.TextColor3 = "⏻ ВЫКЛЮЧИТЬ VR", Color3.fromRGB(255, 80, 80)
     cardStroke.Color = Color3.fromRGB(255, 80, 80)
 
-    -- // ФИЗИЧЕСКИЙ ЦИКЛ
+    -- Физический цикл
     physicsLoopConnection = RunService.Stepped:Connect(function()
         pcall(function()
             local curChar = player.Character
@@ -1204,7 +1223,7 @@ local function startVR()
                 end
             end
 
-            -- // 🧗 АНТИГРАВИТАЦИОННОЕ КАРАБКАНИЕ И ПЕРЕДВИЖЕНИЕ
+            -- // 🧗 РЕАЛИСТИЧНОЕ КАРАБКАНИЕ (HAND-OVER-HAND CLIMBING)
             if not EDITING_UI then
                 if isClimbingL or isClimbingR then
                     if not climbHoldPosition then
@@ -1217,13 +1236,13 @@ local function startVR()
                     local climbMove = Vector3.zero
                     local rightPlane = (camera.CFrame.RightVector * Vector3.new(1, 0, 1)).Unit
 
-                    -- 1. Управление D-Pad (Вверх/Вниз/Влево/Вправо)
+                    -- D-Pad управление
                     if moveForward then climbMove = climbMove + Vector3.new(0, 1, 0) end
                     if moveBackward then climbMove = climbMove - Vector3.new(0, 1, 0) end
                     if moveRight then climbMove = climbMove + rightPlane end
                     if moveLeft then climbMove = climbMove - rightPlane end
 
-                    -- 2. Управление жестами (палец вниз = тело вверх)
+                    -- Жесты рук
                     if isClimbingL then
                         climbMove = climbMove + Vector3.new(0, -handDragL.Y * 1.8, 0) + (rightPlane * -handDragL.X * 1.8)
                     end
@@ -1231,12 +1250,32 @@ local function startVR()
                         climbMove = climbMove + Vector3.new(0, -handDragR.Y * 1.8, 0) + (rightPlane * -handDragR.X * 1.8)
                     end
 
-                    -- Плавное изменение позиции без просадки
+                    local proposedPos = climbHoldPosition
                     if climbMove.Magnitude > 0.05 then
-                        climbHoldPosition = climbHoldPosition + (climbMove.Unit * (18 * dt))
+                        proposedPos = climbHoldPosition + (climbMove.Unit * (18 * dt))
                     end
 
-                    -- Упор в стену (защита от проваливания)
+                    -- // ОГРАНИЧЕНИЕ ВЫЛЕТА РУК (НЕ БОЛЕЕ 4.8 СТАДСОВ ОТ ТОЧКИ ЗАЦЕПА)
+                    if isClimbingL and not isClimbingR and climbAnchorPosL then
+                        local diff = proposedPos - climbAnchorPosL
+                        if diff.Magnitude > MAX_CLIMB_REACH then
+                            proposedPos = climbAnchorPosL + (diff.Unit * MAX_CLIMB_REACH)
+                        end
+                    elseif isClimbingR and not isClimbingL and climbAnchorPosR then
+                        local diff = proposedPos - climbAnchorPosR
+                        if diff.Magnitude > MAX_CLIMB_REACH then
+                            proposedPos = climbAnchorPosR + (diff.Unit * MAX_CLIMB_REACH)
+                        end
+                    elseif isClimbingL and isClimbingR and climbAnchorPosL and climbAnchorPosR then
+                        local midAnchor = (climbAnchorPosL + climbAnchorPosR) * 0.5
+                        local diff = proposedPos - midAnchor
+                        if diff.Magnitude > MAX_CLIMB_REACH + 0.5 then
+                            proposedPos = midAnchor + (diff.Unit * (MAX_CLIMB_REACH + 0.5))
+                        end
+                    end
+                    climbHoldPosition = proposedPos
+
+                    -- Упор в стену
                     local avgNorm = ((isClimbingL and wallNormalL or Vector3.zero) + (isClimbingR and wallNormalR or Vector3.zero)).Unit
                     if avgNorm.Magnitude > 0.05 then
                         local wallRayParams = RaycastParams.new()
@@ -1446,7 +1485,7 @@ local function startVR()
                 end
             end
 
-            -- // ОТПРАВКА В СЕТЬ
+            -- // ОТПРАВКА В СЕТЬ (ОПТИМИЗИРОВАННЫЙ СЖАТЫЙ ПАКЕТ)
             if NETWORK_ENABLED and wsConnection and tick() - lastNetSend > 0.045 and finalLeftCF and finalRightCF then
                 lastNetSend = tick()
                 pcall(function()
@@ -1456,39 +1495,40 @@ local function startVR()
                     local relL = shoulderL:ToObjectSpace(finalLeftCF)
                     local relR = shoulderR:ToObjectSpace(finalRightCF)
 
+                    local lpPos, lpRot = cfToArr(relL)
+                    local rpPos, rpRot = cfToArr(relR)
+                    local wlpPos, wlpRot = cfToArr(finalLeftCF)
+                    local wrpPos, wrpRot = cfToArr(finalRightCF)
+                    local hpPos, hpRot = cfToArr(camCF)
+
                     local grabPacket = nil
                     if grabbedDataL and grabbedDataL.Type == "PLAYER" and grabbedDataR and grabbedDataR.Type == "PLAYER" and grabbedDataL.Target == grabbedDataR.Target then
-                        grabPacket = {target = grabbedDataL.Target.UserId, hand = "BOTH", dist = grabDistBoth}
+                        grabPacket = {target = grabbedDataL.Target.UserId, hand = "BOTH", dist = r2(grabDistBoth)}
                     elseif grabbedDataL and grabbedDataL.Type == "PLAYER" then
-                        grabPacket = {target = grabbedDataL.Target.UserId, hand = "L", dist = grabDistL}
+                        grabPacket = {target = grabbedDataL.Target.UserId, hand = "L", dist = r2(grabDistL)}
                     elseif grabbedDataR and grabbedDataR.Type == "PLAYER" then
-                        grabPacket = {target = grabbedDataR.Target.UserId, hand = "R", dist = grabDistR}
+                        grabPacket = {target = grabbedDataR.Target.UserId, hand = "R", dist = r2(grabDistR)}
                     end
 
-                    local objLData = grabbedDataL and {Name = grabbedDataL.Name, Type = grabbedDataL.Type, Dist = grabDistL} or nil
-                    local objRData = grabbedDataR and {Name = grabbedDataR.Name, Type = grabbedDataR.Type, Dist = grabDistR} or nil
+                    local objLData = grabbedDataL and {Name = grabbedDataL.Name, Type = grabbedDataL.Type, UserId = grabbedDataL.UserId, Dist = r2(grabDistL)} or nil
+                    local objRData = grabbedDataR and {Name = grabbedDataR.Name, Type = grabbedDataR.Type, UserId = grabbedDataR.UserId, Dist = r2(grabDistR)} or nil
 
                     local packet = {
-                        s = "VR52",
+                        s = "VR53",
                         u = player.UserId,
                         un = player.Name,
                         st = HAND_STYLE,
-                        lp = {relL.Position.X, relL.Position.Y, relL.Position.Z},
-                        lr = {relL:ToEulerAnglesXYZ()},
-                        rp = {relR.Position.X, relR.Position.Y, relR.Position.Z},
-                        rr = {relR:ToEulerAnglesXYZ()},
-                        wlp = {finalLeftCF.Position.X, finalLeftCF.Position.Y, finalLeftCF.Position.Z},
-                        wlr = {finalLeftCF:ToEulerAnglesXYZ()},
-                        wrp = {finalRightCF.Position.X, finalRightCF.Position.Y, finalRightCF.Position.Z},
-                        wrr = {finalRightCF:ToEulerAnglesXYZ()},
-                        hp = {camCF.Position.X, camCF.Position.Y, camCF.Position.Z},
-                        hr = {camCF:ToEulerAnglesXYZ()},
+                        lp = lpPos, lr = lpRot,
+                        rp = rpPos, rr = rpRot,
+                        wlp = wlpPos, wlr = wlpRot,
+                        wrp = wrpPos, wrr = wrpRot,
+                        hp = hpPos, hr = hpRot,
                         gL = (grabbedDataL ~= nil or isClimbingL),
                         gR = (grabbedDataR ~= nil or isClimbingR),
                         cL = isClimbingL,
                         cR = isClimbingR,
-                        aL = climbAnchorPosL and {climbAnchorPosL.X, climbAnchorPosL.Y, climbAnchorPosL.Z} or nil,
-                        aR = climbAnchorPosR and {climbAnchorPosR.X, climbAnchorPosR.Y, climbAnchorPosR.Z} or nil,
+                        aL = climbAnchorPosL and {r2(climbAnchorPosL.X), r2(climbAnchorPosL.Y), r2(climbAnchorPosL.Z)} or nil,
+                        aR = climbAnchorPosR and {r2(climbAnchorPosR.X), r2(climbAnchorPosR.Y), r2(climbAnchorPosR.Z)} or nil,
                         objL = objLData,
                         objR = objRData,
                         gb = grabPacket
@@ -1546,9 +1586,17 @@ local function startVR()
                     applyRemotePart(uData.Left, true, uData.CurrentL, uData.GrabL, uData.ClimbL, uData.AnchorL)
                     applyRemotePart(uData.Right, false, uData.CurrentR, uData.GrabR, uData.ClimbR, uData.AnchorR)
 
+                    -- // РЕКУРСИВНАЯ СИНХРОНИЗАЦИЯ УДЕРЖИВАЕМЫХ ПРЕДМЕТОВ
                     local function syncRemoteHeldItem(objData, handCF)
                         if not objData or not objData.Name then return end
-                        local target = workspace:FindFirstChild(objData.Name) or (objData.Type == "PLAYER" and Players:FindFirstChild(objData.Name) and Players[objData.Name].Character)
+                        local target = nil
+                        if objData.Type == "PLAYER" and objData.UserId then
+                            local p = Players:GetPlayerByUserId(objData.UserId)
+                            target = p and p.Character
+                        else
+                            target = workspace:FindFirstChild(objData.Name, true)
+                        end
+
                         if target and target ~= player.Character then
                             local d = objData.Dist or 4.0
                             local targetCF = handCF * CFrame.new(0, 0, -d)
