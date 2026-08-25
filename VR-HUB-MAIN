@@ -1,4 +1,4 @@
--- // 👑 LUXURY VR ENGINE v50.0 JUBILEE OMEGA (WALL CLIMBING, VANILLA ANIMATION FIX & ULTRA SYNC)
+-- // 👑 LUXURY VR ENGINE v50.1 OMEGA (PERFECT STABLE CLIMBING & ZERO-JITTER PHYSICS)
 
 -- ==============================================================================
 -- 🚀 ТВОЙ ЛИЧНЫЙ ПРИВАТНЫЙ WEBSOCKET СЕРВЕР:
@@ -47,15 +47,14 @@ local grabDistL = 4.0
 local grabDistR = 4.0
 local grabDistBoth = 5.5
 
--- Физический хват предметов / игроков
+-- Физический хват предметов
 local grabbedDataL = nil
 local grabbedDataR = nil
 local beingGrabbedBy = nil
 
--- Система карабкания по стенам (Climbing)
+-- Стабильное карабкание (Climbing State)
 local isClimbingL, isClimbingR = false, false
 local climbAnchorPosL, climbAnchorPosR = nil, nil
-local lastHandWorldPosL, lastHandWorldPosR = nil, nil
 local wallNormalL, wallNormalR = Vector3.zero, Vector3.zero
 
 -- Физика и ввод
@@ -279,7 +278,7 @@ makeFreeDraggable(mainCard, dragHandle)
 
 local title = Instance.new("TextLabel", dragHandle)
 title.Size, title.Position = UDim2.new(1, 0, 0, 20), UDim2.new(0, 14, 0, 5)
-title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v50.0 (JUBILEE OMEGA)"
+title.BackgroundTransparency, title.Text = 1, "👑 LUXURY VR v50.1 (STABLE OMEGA)"
 title.TextColor3, title.Font, title.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 11
 title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -418,7 +417,7 @@ end
 updateDpadInner(1.0)
 registerEditableWidget("DPAD", "D-Pad (Ходьба)", dpadContainer, Vector2.new(135, 135), 1, updateDpadInner)
 
--- // ПОИСК СТЕНЫ ДЛЯ КАРАБКАНИЯ
+-- // ПРОВЕРКА СТЕНЫ ДЛЯ КАРАБКАНИЯ (СТАБИЛЬНЫЙ ЛУЧ)
 local function findClimbWallTarget(palmPart)
     if not palmPart then return nil, nil end
     local pPos = palmPart.Position
@@ -426,13 +425,10 @@ local function findClimbWallTarget(palmPart)
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = {player.Character, viewmodelFolder}
 
-    -- Проверяем 6 направлений лучами от ладони
     local dirs = {
-        palmPart.CFrame.LookVector * 2.8,
-        -palmPart.CFrame.LookVector * 2.8,
-        palmPart.CFrame.UpVector * 2.5,
-        -palmPart.CFrame.UpVector * 2.5,
-        camera.CFrame.LookVector * 3.0
+        camera.CFrame.LookVector * 3.5,
+        palmPart.CFrame.LookVector * 3.0,
+        (camera.CFrame.LookVector + palmPart.CFrame.LookVector).Unit * 3.0
     }
 
     for _, dir in ipairs(dirs) do
@@ -441,21 +437,10 @@ local function findClimbWallTarget(palmPart)
             return res.Position, res.Normal
         end
     end
-
-    -- Запасная проверка через радиус
-    local overlap = OverlapParams.new()
-    overlap.FilterType = Enum.RaycastFilterType.Exclude
-    overlap.FilterDescendantsInstances = {player.Character, viewmodelFolder}
-    local parts = workspace:GetPartBoundsInRadius(pPos, 2.8, overlap)
-    for _, p in ipairs(parts) do
-        if p:IsA("BasePart") and p.CanCollide and p.Anchored then
-            return pPos, (camera.CFrame.Position - pPos).Unit
-        end
-    end
     return nil, nil
 end
 
--- // УНИВЕРСАЛЬНЫЙ ПОИСК ДЛЯ ЗАХВАТА ПРЕДМЕТОВ
+-- // ПОИСК ПРЕДМЕТОВ ДЛЯ ХВАТА
 local function findUniversalGrabTarget(palmPart, maxDist)
     if not palmPart then return nil end
     local pPos = palmPart.Position
@@ -597,31 +582,26 @@ local function createIndependentHandPad(isLeft)
         grabDistBoth = math.clamp(grabDistBoth - 1.2, 1.5, 35)
     end)
 
-    -- ХВАТ И КАРАБКАНИЕ НА КНОПКУ 🖐️
+    -- Хват и Карабкание
     grabBtn.Activated:Connect(function()
         if not VR_ACTIVE or EDITING_UI then return end
         local palm = isLeft and (leftArmModel and leftArmModel:FindFirstChild("Palm")) or (rightArmModel and rightArmModel:FindFirstChild("Palm"))
         
         if isLeft then
             if isClimbingL or grabbedDataL then
-                isClimbingL = false
-                climbAnchorPosL = nil
-                grabbedDataL = nil
+                isClimbingL, climbAnchorPosL, grabbedDataL = false, nil, nil
                 grabBtn.BackgroundColor3 = Color3.fromRGB(30, 20, 25)
             else
-                -- Сначала проверяем стену на карабкание
                 if CLIMB_ENABLED then
                     local wPos, wNorm = findClimbWallTarget(palm)
                     if wPos then
                         isClimbingL = true
                         climbAnchorPosL = wPos
                         wallNormalL = wNorm
-                        lastHandWorldPosL = palm and palm.Position or wPos
                         grabBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
                         return
                     end
                 end
-                -- Если стены нет, захватываем предмет
                 local targetData = findUniversalGrabTarget(palm, 8.0)
                 if targetData then 
                     grabbedDataL = targetData 
@@ -630,9 +610,7 @@ local function createIndependentHandPad(isLeft)
             end
         else
             if isClimbingR or grabbedDataR then
-                isClimbingR = false
-                climbAnchorPosR = nil
-                grabbedDataR = nil
+                isClimbingR, climbAnchorPosR, grabbedDataR = false, nil, nil
                 grabBtn.BackgroundColor3 = Color3.fromRGB(30, 20, 25)
             else
                 if CLIMB_ENABLED then
@@ -641,7 +619,6 @@ local function createIndependentHandPad(isLeft)
                         isClimbingR = true
                         climbAnchorPosR = wPos
                         wallNormalR = wNorm
-                        lastHandWorldPosR = palm and palm.Position or wPos
                         grabBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
                         return
                     end
@@ -655,7 +632,7 @@ local function createIndependentHandPad(isLeft)
         end
     end)
 
-    -- Слушатель Движения
+    -- Движение джойстиком
     local moveInput, mStartPos = nil, nil
     moveFrame.InputBegan:Connect(function(i)
         if not EDITING_UI and HAND_INPUT_MODE == "DEFAULT" and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1) then
@@ -685,7 +662,7 @@ local function createIndependentHandPad(isLeft)
         end
     end)
 
-    -- Слушатель Кручения
+    -- Кручение кистью
     local rotInput, rStartPos, lastRotTap = nil, nil, 0
     rotFrame.InputBegan:Connect(function(i)
         if not EDITING_UI and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1) then
@@ -825,7 +802,7 @@ local function setupHands()
     leftArmModel, rightArmModel = buildArm(true), buildArm(false)
 end
 
--- // 6. СЕТЕВОЙ МОДУЛЬ (JUBILEE MULTIPLAYER)
+-- // 6. СЕТЕВОЙ МОДУЛЬ
 local function getWebSocketFunc()
     if syn and type(syn.websocket) == "table" and type(syn.websocket.connect) == "function" then
         return syn.websocket.connect
@@ -1032,7 +1009,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
                             isClimbingL = true
                             climbAnchorPosL = wPos
                             wallNormalL = wNorm
-                            lastHandWorldPosL = palm and palm.Position or wPos
                         end
                     end
                 elseif not isLeftSide and not screenTouchR then
@@ -1045,7 +1021,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
                             isClimbingR = true
                             climbAnchorPosR = wPos
                             wallNormalR = wNorm
-                            lastHandWorldPosR = palm and palm.Position or wPos
                         end
                     end
                 end
@@ -1071,7 +1046,6 @@ end)
 UserInputService.InputChanged:Connect(function(input, processed)
     if not VR_ACTIVE or EDITING_UI then return end
 
-    -- Поворот камеры
     if input == camTouchInput and camTouchLastPos then
         local curPos = Vector2.new(input.Position.X, input.Position.Y)
         local d = curPos - camTouchLastPos
@@ -1081,7 +1055,6 @@ UserInputService.InputChanged:Connect(function(input, processed)
         touchPitch = math.clamp(touchPitch - d.Y * (0.0035 * SENS_MULTIPLIER), math.rad(-75), math.rad(75))
     end
 
-    -- Ведение рук
     if HAND_INPUT_MODE == "SCREEN_DRAG" then
         if input == screenTouchL and screenTouchLStart then
             local delta = input.Position - screenTouchLStart
@@ -1108,18 +1081,14 @@ UserInputService.InputEnded:Connect(function(input)
     if input == screenTouchL then
         screenTouchL, screenTouchLStart = nil, nil
         handDragL = Vector3.zero
-        if isClimbingL then
-            isClimbingL = false
-            climbAnchorPosL = nil
-        end
+        isClimbingL = false
+        climbAnchorPosL = nil
     end
     if input == screenTouchR then
         screenTouchR, screenTouchRStart = nil, nil
         handDragR = Vector3.zero
-        if isClimbingR then
-            isClimbingR = false
-            climbAnchorPosR = nil
-        end
+        isClimbingR = false
+        climbAnchorPosR = nil
     end
 end)
 
@@ -1127,7 +1096,7 @@ if UserInputService.GyroscopeEnabled then
     gyroConnection = UserInputService.DeviceRotationChanged:Connect(function(_, rotCFrame) rawGyroCF = rotCFrame end)
 end
 
--- // 8. ГЛАВНЫЙ ЦИКЛ РЕНДЕРА И ФИЗИКИ КАРАБКАНИЯ
+-- // 8. ГЛАВНЫЙ ЦИКЛ РЕНДЕРА И БЕЗУПРЕЧНАЯ ФИЗИКА КАРАБКАНИЯ
 local function startVR()
     VR_ACTIVE = true
     camera.CameraType = Enum.CameraType.Scriptable
@@ -1156,6 +1125,7 @@ local function startVR()
     toggleBtn.Text, toggleBtn.TextColor3 = "⏻ ВЫКЛЮЧИТЬ VR", Color3.fromRGB(255, 80, 80)
     cardStroke.Color = Color3.fromRGB(255, 80, 80)
 
+    -- Поворот тела
     physicsLoopConnection = RunService.Stepped:Connect(function()
         pcall(function()
             local curChar = player.Character
@@ -1165,15 +1135,12 @@ local function startVR()
 
             humanoid.AutoRotate = false
 
-            -- // УЛУЧШЕННАЯ ФИЗИКА И АНИМАЦИЯ ДЛЯ ВАНИЛЬНЫХ ИГРОКОВ (БЕЗ СКРИПТА)
             if isClimbingL or isClimbingR then
-                humanoid:ChangeState(Enum.HumanoidStateType.Climbing)
+                -- Поворот лицом к стене без дерганья
                 local avgWallNormal = ((isClimbingL and wallNormalL or Vector3.zero) + (isClimbingR and wallNormalR or Vector3.zero)).Unit
                 if avgWallNormal.Magnitude > 0.1 then
-                    -- Разворачиваем и слегка наклоняем персонажа к стене
                     local lookDir = -Vector3.new(avgWallNormal.X, 0, avgWallNormal.Z).Unit
-                    local climbRotation = CFrame.lookAt(curRoot.Position, curRoot.Position + lookDir) * CFrame.Angles(math.rad(10), 0, 0)
-                    curRoot.CFrame = climbRotation
+                    curRoot.CFrame = CFrame.lookAt(curRoot.Position, curRoot.Position + lookDir)
                 end
             else
                 local look = camera.CFrame.LookVector
@@ -1209,7 +1176,7 @@ local function startVR()
             end
 
             -- Ходьба
-            if not EDITING_UI and not isClimbingL and not isClimbingR then
+            if not EDITING_UI and not (isClimbingL or isClimbingR) then
                 local moveZ = (moveForward and -1 or 0) + (moveBackward and 1 or 0)
                 local moveX = (moveRight and 1 or 0) + (moveLeft and -1 or 0)
                 if moveZ ~= 0 or moveX ~= 0 then
@@ -1218,6 +1185,60 @@ local function startVR()
                     humanoid:Move(moveDir.Unit, false)
                 else
                     humanoid:Move(Vector3.zero, false)
+                end
+            end
+
+            -- // СТАБИЛЬНАЯ ФИЗИКА КАРАБКАНИЯ (БЕЗ ДЁРГАНИЙ И ПРОВАЛОВ В СТЕНУ)
+            if CLIMB_ENABLED and (isClimbingL or isClimbingR) then
+                curRoot.AssemblyLinearVelocity = Vector3.zero
+                curRoot.AssemblyAngularVelocity = Vector3.zero
+
+                local pullIntent = Vector3.zero
+                local activeHands = 0
+
+                if isClimbingL then
+                    -- Тяга руки: ведение пальца вниз тянет тело вверх
+                    local moveVec = Vector3.new(-handDragL.X, -handDragL.Y, handDragL.Z)
+                    local worldPull = (camera.CFrame.RightVector * moveVec.X) + (Vector3.new(0, 1, 0) * moveVec.Y) + (camera.CFrame.LookVector * moveVec.Z)
+                    pullIntent = pullIntent + worldPull
+                    activeHands = activeHands + 1
+                end
+
+                if isClimbingR then
+                    local moveVec = Vector3.new(-handDragR.X, -handDragR.Y, handDragR.Z)
+                    local worldPull = (camera.CFrame.RightVector * moveVec.X) + (Vector3.new(0, 1, 0) * moveVec.Y) + (camera.CFrame.LookVector * moveVec.Z)
+                    pullIntent = pullIntent + worldPull
+                    activeHands = activeHands + 1
+                end
+
+                if activeHands > 0 then
+                    local finalStep = (pullIntent / activeHands) * (15 * dt)
+                    local targetPos = curRoot.Position + finalStep
+
+                    -- Проверка столкновения со стеной (не дает провалиться)
+                    local avgNorm = ((isClimbingL and wallNormalL or Vector3.zero) + (isClimbingR and wallNormalR or Vector3.zero)).Unit
+                    local wallRayParams = RaycastParams.new()
+                    wallRayParams.FilterType = Enum.RaycastFilterType.Exclude
+                    wallRayParams.FilterDescendantsInstances = {curChar, viewmodelFolder}
+                    
+                    local wallCheck = workspace:Raycast(targetPos, -avgNorm * 3.5, wallRayParams)
+                    if wallCheck then
+                        local minWallDist = 1.85
+                        local curDist = (wallCheck.Position - targetPos).Magnitude
+                        if curDist < minWallDist then
+                            targetPos = wallCheck.Position + (wallCheck.Normal * minWallDist)
+                        end
+                    end
+
+                    curRoot.CFrame = CFrame.new(targetPos) * (curRoot.CFrame - curRoot.Position)
+                end
+
+                -- Автоматический срыв, если рука слишком далеко растянулась
+                if isClimbingL and climbAnchorPosL and (curRoot.Position - climbAnchorPosL).Magnitude > 6.0 then
+                    isClimbingL, climbAnchorPosL = false, nil
+                end
+                if isClimbingR and climbAnchorPosR and (curRoot.Position - climbAnchorPosR).Magnitude > 6.0 then
+                    isClimbingR, climbAnchorPosR = false, nil
                 end
             end
 
@@ -1232,7 +1253,6 @@ local function startVR()
 
             smoothedCamRot = smoothedCamRot:Lerp(targetRot, 0.4)
 
-            -- Шаги
             local isMoving = curRoot.AssemblyLinearVelocity.Magnitude > 1.5
             bobStep = bobStep + dt * (isMoving and 8.5 or 2.2)
             local bobX, bobY = math.sin(bobStep) * 0.018, math.cos(bobStep * 2) * 0.012
@@ -1260,7 +1280,7 @@ local function startVR()
 
             local finalLeftCF, finalRightCF = nil, nil
 
-            local function updateArm(arm, isL, off, tRot, tAlpha, wPitch, wYaw, wRoll, isGrabbing)
+            local function updateArm(arm, isL, off, tRot, tAlpha, wPitch, wYaw, wRoll, isGrabbing, isClimbing, wallAnchor)
                 if not arm then return end
                 local side = isL and -1 or 1
                 local userWrist = CFrame.Angles(wPitch, wYaw, wRoll or 0)
@@ -1268,6 +1288,12 @@ local function startVR()
                 local finalAngle = baseAngle:Lerp(tRot, tAlpha * 0.8)
 
                 local base = camCF * swayCF * CFrame.new(side * (0.68 - (side * bobX)) + off.X, -0.85 + bobY + off.Y, -1.15 + off.Z) * finalAngle
+                
+                -- Визуальное прижатие руки к точке на стене
+                if isClimbing and wallAnchor then
+                    base = CFrame.new(wallAnchor) * (base - base.Position)
+                end
+
                 if isL then finalLeftCF = base else finalRightCF = base end
 
                 local f, c, cr, p, ap, fg, sn, th, tt = arm:FindFirstChild("Forearm"), arm:FindFirstChild("Cuff"), arm:FindFirstChild("CuffRing"), arm:FindFirstChild("Palm"), arm:FindFirstChild("ArmorPlate"), arm:FindFirstChild("Fingers"), arm:FindFirstChild("Sensors"), arm:FindFirstChild("Thumb"), arm:FindFirstChild("ThumbTip")
@@ -1278,7 +1304,7 @@ local function startVR()
                     p.CFrame = base * CFrame.new(0, 0, -0.32)
                     if ap then ap.CFrame = base * CFrame.new(0, 0.12, -0.32) end
 
-                    if isGrabbing then
+                    if isGrabbing or isClimbing then
                         fg.CFrame = base * CFrame.new(0, -0.06, -0.48) * CFrame.Angles(math.rad(-65), 0, 0)
                         if sn then sn.CFrame = base * CFrame.new(0, 0.04, -0.50) end
                         if th then th.CFrame = base * CFrame.new(side * 0.16, -0.06, -0.28) * CFrame.Angles(math.rad(-30), math.rad(side * 40), 0) end
@@ -1291,48 +1317,8 @@ local function startVR()
                 end
             end
 
-            local isGrabL = (grabbedDataL ~= nil or isClimbingL)
-            local isGrabR = (grabbedDataR ~= nil or isClimbingR)
-
-            updateArm(leftArmModel, true, currentHandOffsetL, tapRotL, tapAlphaL, wristPitchL, wristYawL, wristRollL, isGrabL)
-            updateArm(rightArmModel, false, currentHandOffsetR, tapRotR, tapAlphaR, wristPitchR, wristYawR, wristRollR, isGrabR)
-
-            -- // РЕАЛИЗАЦИЯ ФИЗИКИ КАРАБКАНИЯ (ПОДТЯГИВАНИЕ ТЕЛА К РУКАМ)
-            if CLIMB_ENABLED then
-                local vrPalmL = leftArmModel and leftArmModel:FindFirstChild("Palm")
-                local vrPalmR = rightArmModel and rightArmModel:FindFirstChild("Palm")
-
-                local pullDelta = Vector3.zero
-                local activeHands = 0
-
-                if isClimbingL and vrPalmL and climbAnchorPosL then
-                    if lastHandWorldPosL then
-                        local diff = vrPalmL.Position - lastHandWorldPosL
-                        pullDelta = pullDelta - diff
-                        activeHands = activeHands + 1
-                    end
-                    lastHandWorldPosL = vrPalmL.Position
-                else
-                    lastHandWorldPosL = nil
-                end
-
-                if isClimbingR and vrPalmR and climbAnchorPosR then
-                    if lastHandWorldPosR then
-                        local diff = vrPalmR.Position - lastHandWorldPosR
-                        pullDelta = pullDelta - diff
-                        activeHands = activeHands + 1
-                    end
-                    lastHandWorldPosR = vrPalmR.Position
-                else
-                    lastHandWorldPosR = nil
-                end
-
-                if activeHands > 0 then
-                    pullDelta = pullDelta / activeHands
-                    curRoot.CFrame = curRoot.CFrame + pullDelta
-                    curRoot.AssemblyLinearVelocity = Vector3.zero
-                end
-            end
+            updateArm(leftArmModel, true, currentHandOffsetL, tapRotL, tapAlphaL, wristPitchL, wristYawL, wristRollL, (grabbedDataL ~= nil or isClimbingL), isClimbingL, climbAnchorPosL)
+            updateArm(rightArmModel, false, currentHandOffsetR, tapRotR, tapAlphaR, wristPitchR, wristYawR, wristRollR, (grabbedDataR ~= nil or isClimbingR), isClimbingR, climbAnchorPosR)
 
             -- Двуручный хват оружия
             if currentTool then
@@ -1423,7 +1409,7 @@ local function startVR()
                 end
             end
 
-            -- // ОТПРАВКА В СЕТЬ (VR50 JUBILEE)
+            -- // ОТПРАВКА В СЕТЬ
             if NETWORK_ENABLED and wsConnection and tick() - lastNetSend > 0.045 and finalLeftCF and finalRightCF then
                 lastNetSend = tick()
                 pcall(function()
